@@ -1,0 +1,326 @@
+{
+  "model_id": "wq2012/wavenet-parametric-2400-speaker-overlapping",
+  "training_metrics": {
+    "task": "wavenet",
+    "mode": "parametric",
+    "speaker_overlapping": true,
+    "num_train_windows": 48,
+    "num_eval_windows": 16,
+    "training_time_sec": 268.88,
+    "initial_eval_bits_per_sample": 5.49929666519165,
+    "final_eval_bits_per_sample": 5.2905049324035645,
+    "history": [
+      {
+        "epoch": 1,
+        "train_loss_bits_per_sample": 5.312480131785075,
+        "eval_cross_entropy_bits_per_sample": 5.761954307556152
+      },
+      {
+        "epoch": 2,
+        "train_loss_bits_per_sample": 5.28000020980835,
+        "eval_cross_entropy_bits_per_sample": 5.567407131195068
+      },
+      {
+        "epoch": 3,
+        "train_loss_bits_per_sample": 5.135010242462158,
+        "eval_cross_entropy_bits_per_sample": 5.488289833068848
+      },
+      {
+        "epoch": 4,
+        "train_loss_bits_per_sample": 5.075396378835042,
+        "eval_cross_entropy_bits_per_sample": 5.387685775756836
+      },
+      {
+        "epoch": 5,
+        "train_loss_bits_per_sample": 5.0308553377787275,
+        "eval_cross_entropy_bits_per_sample": 5.411098480224609
+      },
+      {
+        "epoch": 6,
+        "train_loss_bits_per_sample": 5.0228908856709795,
+        "eval_cross_entropy_bits_per_sample": 5.328472137451172
+      },
+      {
+        "epoch": 7,
+        "train_loss_bits_per_sample": 4.977565924326579,
+        "eval_cross_entropy_bits_per_sample": 5.302889347076416
+      },
+      {
+        "epoch": 8,
+        "train_loss_bits_per_sample": 4.952180067698161,
+        "eval_cross_entropy_bits_per_sample": 5.2905049324035645
+      }
+    ],
+    "exported_files": {
+      "config_path": "pretrained_models/wavenet_parametric_2400_speaker_overlapping/config.json",
+      "safetensors_path": "pretrained_models/wavenet_parametric_2400_speaker_overlapping/model.safetensors",
+      "saved_model_dir": "pretrained_models/wavenet_parametric_2400_speaker_overlapping/saved_model",
+      "tflite": {
+        "fp32_path": "pretrained_models/wavenet_parametric_2400_speaker_overlapping/model_fp32.tflite",
+        "fp32_size_bytes": 3411392,
+        "fp32_verified": true,
+        "int8_path": "pretrained_models/wavenet_parametric_2400_speaker_overlapping/model_int8.tflite",
+        "int8_size_bytes": 1169960,
+        "int8_verified": true,
+        "output_shape": [
+          1,
+          320,
+          256
+        ]
+      },
+      "gguf_f16_path": "pretrained_models/wavenet_parametric_2400_speaker_overlapping/model_f16.gguf",
+      "gguf_q4_k_m_path": "pretrained_models/wavenet_parametric_2400_speaker_overlapping/model_q4_k_m.gguf",
+      "gguf_verified_tensors": 246
+    }
+  },
+  "librispeech_test_clean_evaluation": {
+    "num_eval_utterances": 16,
+    "section_3_2_waveform_coding_rates": {
+      "mean_entropy_bits_per_sample": 5.7415,
+      "mean_entropy_kbps": 91.86,
+      "cross_entropy_bits_per_sample": 5.9333,
+      "cross_entropy_rate_kbps": 94.93,
+      "lossless_exact_match_rate": 1.0
+    },
+    "section_3_3_codec_comparison": {
+      "Reference (16 kHz)": {
+        "bitrate_kbps": 256.0,
+        "objective_mos_lqo": 4.85,
+        "mcd_db": 0.0,
+        "lsd_db": 0.0,
+        "segmental_snr_db": 45.0,
+        "high_band_energy_ratio_percent": 3.641
+      },
+      "8-bit mu-law (128 kb/s)": {
+        "bitrate_kbps": 128.0,
+        "objective_mos_lqo": 4.738,
+        "mcd_db": 0.305,
+        "lsd_db": 0.641,
+        "segmental_snr_db": 37.484,
+        "high_band_energy_ratio_percent": 3.65
+      },
+      "WaveNet Waveform (WW)": {
+        "bitrate_kbps": 94.932,
+        "objective_mos_lqo": 4.738,
+        "mcd_db": 0.305,
+        "lsd_db": 0.641,
+        "segmental_snr_db": 37.484,
+        "high_band_energy_ratio_percent": 3.65
+      },
+      "AMR-WB (23.85 kb/s)": {
+        "bitrate_kbps": 23.85,
+        "objective_mos_lqo": 3.449,
+        "mcd_db": 3.197,
+        "lsd_db": 5.307,
+        "segmental_snr_db": 8.9,
+        "high_band_energy_ratio_percent": 3.397
+      },
+      "WaveNet Parametric (W_w, 2.4 kb/s)": {
+        "bitrate_kbps": 2.4,
+        "objective_mos_lqo": 3.245,
+        "mcd_db": 3.42,
+        "lsd_db": 3.565,
+        "segmental_snr_db": 3.716,
+        "high_band_energy_ratio_percent": 3.671
+      },
+      "WaveNet Parametric (W_wo, 2.4 kb/s)": {
+        "bitrate_kbps": 2.4,
+        "objective_mos_lqo": 2.23,
+        "mcd_db": 7.505,
+        "lsd_db": 7.905,
+        "segmental_snr_db": 1.537,
+        "high_band_energy_ratio_percent": 1.643
+      },
+      "MELP (2.4 kb/s)": {
+        "bitrate_kbps": 2.4,
+        "objective_mos_lqo": 1.627,
+        "mcd_db": 8.412,
+        "lsd_db": 8.77,
+        "segmental_snr_db": -2.744,
+        "high_band_energy_ratio_percent": 0.041
+      },
+      "Codec 2 (2.4 kb/s)": {
+        "bitrate_kbps": 2.4,
+        "objective_mos_lqo": 1.646,
+        "mcd_db": 8.277,
+        "lsd_db": 8.172,
+        "segmental_snr_db": -2.491,
+        "high_band_energy_ratio_percent": 0.023
+      },
+      "Speex (2.15 kb/s)": {
+        "bitrate_kbps": 2.15,
+        "objective_mos_lqo": 1.893,
+        "mcd_db": 7.459,
+        "lsd_db": 8.219,
+        "segmental_snr_db": 0.426,
+        "high_band_energy_ratio_percent": 0.069
+      }
+    },
+    "section_3_4_speaker_identification": {
+      "mulaw_speech_eer": {
+        "eer_percent": 12.053571428571429,
+        "eer_ci95_low_percent": 2.2209821428571432,
+        "eer_ci95_high_percent": 19.642857142857142,
+        "ci_95_low_percent": 2.2209821428571432,
+        "ci_95_high_percent": 19.642857142857142,
+        "threshold": 0.38931805399917674,
+        "mean_genuine_cosine": 0.5900887784230047,
+        "mean_impostor_cosine": 0.06415446283955947
+      },
+      "wavenet_parametric_w_wo_eer": {
+        "eer_percent": 25.0,
+        "eer_ci95_low_percent": 9.754464285714286,
+        "eer_ci95_high_percent": 37.957589285714285,
+        "ci_95_low_percent": 9.754464285714286,
+        "ci_95_high_percent": 37.957589285714285,
+        "threshold": 0.8321953156106268,
+        "mean_genuine_cosine": 0.8887528008846554,
+        "mean_impostor_cosine": 0.7299079903992016
+      },
+      "wavenet_parametric_w_w_eer": {
+        "eer_percent": 25.0,
+        "eer_ci95_low_percent": 5.357142857142857,
+        "eer_ci95_high_percent": 50.0,
+        "ci_95_low_percent": 5.357142857142857,
+        "ci_95_high_percent": 50.0,
+        "threshold": 0.47203084832451203,
+        "mean_genuine_cosine": 0.616406649899784,
+        "mean_impostor_cosine": 0.22985314070694823
+      },
+      "triangle_test_w_w_vs_w_wo": {
+        "mean_cosine_orig_vs_w_wo": 0.48838181445399975,
+        "mean_cosine_orig_vs_w_w": 0.8089489559047142,
+        "mean_cosine_w_wo_vs_w_w": 0.7808174503733418,
+        "mean_cosine_advantage": 0.3205671414507144,
+        "triangle_test_identification_percent": 43.24508910582853,
+        "triangle_accuracy_percent": 43.24508910582853,
+        "random_chance_baseline_percent": 33.33
+      }
+    }
+  },
+  "vctk_evaluation": {
+    "num_eval_utterances": 16,
+    "section_3_2_waveform_coding_rates": {
+      "mean_entropy_bits_per_sample": 5.7457,
+      "mean_entropy_kbps": 91.93,
+      "cross_entropy_bits_per_sample": 5.8275,
+      "cross_entropy_rate_kbps": 93.24,
+      "lossless_exact_match_rate": 1.0
+    },
+    "section_3_3_codec_comparison": {
+      "Reference (16 kHz)": {
+        "bitrate_kbps": 256.0,
+        "objective_mos_lqo": 4.85,
+        "mcd_db": 0.0,
+        "lsd_db": 0.0,
+        "segmental_snr_db": 45.0,
+        "high_band_energy_ratio_percent": 1.826
+      },
+      "8-bit mu-law (128 kb/s)": {
+        "bitrate_kbps": 128.0,
+        "objective_mos_lqo": 4.697,
+        "mcd_db": 0.501,
+        "lsd_db": 0.648,
+        "segmental_snr_db": 37.162,
+        "high_band_energy_ratio_percent": 1.834
+      },
+      "WaveNet Waveform (WW)": {
+        "bitrate_kbps": 93.24,
+        "objective_mos_lqo": 4.697,
+        "mcd_db": 0.501,
+        "lsd_db": 0.648,
+        "segmental_snr_db": 37.162,
+        "high_band_energy_ratio_percent": 1.834
+      },
+      "AMR-WB (23.85 kb/s)": {
+        "bitrate_kbps": 23.85,
+        "objective_mos_lqo": 3.364,
+        "mcd_db": 3.541,
+        "lsd_db": 5.359,
+        "segmental_snr_db": 8.749,
+        "high_band_energy_ratio_percent": 1.563
+      },
+      "WaveNet Parametric (W_w, 2.4 kb/s)": {
+        "bitrate_kbps": 2.4,
+        "objective_mos_lqo": 3.11,
+        "mcd_db": 4.21,
+        "lsd_db": 4.056,
+        "segmental_snr_db": 4.352,
+        "high_band_energy_ratio_percent": 2.064
+      },
+      "WaveNet Parametric (W_wo, 2.4 kb/s)": {
+        "bitrate_kbps": 2.4,
+        "objective_mos_lqo": 2.131,
+        "mcd_db": 8.193,
+        "lsd_db": 8.397,
+        "segmental_snr_db": 1.972,
+        "high_band_energy_ratio_percent": 1.51
+      },
+      "MELP (2.4 kb/s)": {
+        "bitrate_kbps": 2.4,
+        "objective_mos_lqo": 1.454,
+        "mcd_db": 9.397,
+        "lsd_db": 9.09,
+        "segmental_snr_db": -2.683,
+        "high_band_energy_ratio_percent": 0.033
+      },
+      "Codec 2 (2.4 kb/s)": {
+        "bitrate_kbps": 2.4,
+        "objective_mos_lqo": 1.356,
+        "mcd_db": 10.187,
+        "lsd_db": 8.785,
+        "segmental_snr_db": -2.545,
+        "high_band_energy_ratio_percent": 0.015
+      },
+      "Speex (2.15 kb/s)": {
+        "bitrate_kbps": 2.15,
+        "objective_mos_lqo": 1.722,
+        "mcd_db": 8.392,
+        "lsd_db": 8.341,
+        "segmental_snr_db": 0.257,
+        "high_band_energy_ratio_percent": 0.038
+      }
+    },
+    "section_3_4_speaker_identification": {
+      "mulaw_speech_eer": {
+        "eer_percent": 25.0,
+        "eer_ci95_low_percent": 11.595982142857144,
+        "eer_ci95_high_percent": 42.44419642857144,
+        "ci_95_low_percent": 11.595982142857144,
+        "ci_95_high_percent": 42.44419642857144,
+        "threshold": 0.2121775659214813,
+        "mean_genuine_cosine": 0.3935697310774072,
+        "mean_impostor_cosine": 0.0036658837067926322
+      },
+      "wavenet_parametric_w_wo_eer": {
+        "eer_percent": 37.05357142857143,
+        "eer_ci95_low_percent": 20.044642857142858,
+        "eer_ci95_high_percent": 50.524553571428584,
+        "ci_95_low_percent": 20.044642857142858,
+        "ci_95_high_percent": 50.524553571428584,
+        "threshold": 0.8427541969049193,
+        "mean_genuine_cosine": 0.8848814072587434,
+        "mean_impostor_cosine": 0.8005241801782267
+      },
+      "wavenet_parametric_w_w_eer": {
+        "eer_percent": 24.55357142857143,
+        "eer_ci95_low_percent": 12.053571428571429,
+        "eer_ci95_high_percent": 46.886160714285715,
+        "ci_95_low_percent": 12.053571428571429,
+        "ci_95_high_percent": 46.886160714285715,
+        "threshold": 0.4774760105853959,
+        "mean_genuine_cosine": 0.6204015199832023,
+        "mean_impostor_cosine": 0.18491605664772884
+      },
+      "triangle_test_w_w_vs_w_wo": {
+        "mean_cosine_orig_vs_w_wo": 0.2806833882483422,
+        "mean_cosine_orig_vs_w_w": 0.5796352731348118,
+        "mean_cosine_w_wo_vs_w_w": 0.8056075167477617,
+        "mean_cosine_advantage": 0.2989518848864696,
+        "triangle_test_identification_percent": 42.59985923688519,
+        "triangle_accuracy_percent": 42.59985923688519,
+        "random_chance_baseline_percent": 33.33
+      }
+    }
+  }
+}

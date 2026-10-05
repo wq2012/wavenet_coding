@@ -1,0 +1,130 @@
+{
+  "task": "speaker_verifier",
+  "domain": "mulaw",
+  "num_speakers": 48,
+  "training_time_sec": 87.95,
+  "initial_ge2e_loss": 1.7115626811981202,
+  "final_ge2e_loss": 0.41365304589271545,
+  "history": [
+    {
+      "epoch": 1,
+      "ge2e_loss": 1.7115626811981202
+    },
+    {
+      "epoch": 2,
+      "ge2e_loss": 1.6602702140808105
+    },
+    {
+      "epoch": 3,
+      "ge2e_loss": 1.4492377877235412
+    },
+    {
+      "epoch": 4,
+      "ge2e_loss": 1.513491427898407
+    },
+    {
+      "epoch": 5,
+      "ge2e_loss": 1.319354110956192
+    },
+    {
+      "epoch": 6,
+      "ge2e_loss": 1.1196979820728301
+    },
+    {
+      "epoch": 7,
+      "ge2e_loss": 1.0944021582603454
+    },
+    {
+      "epoch": 8,
+      "ge2e_loss": 0.8904390752315521
+    },
+    {
+      "epoch": 9,
+      "ge2e_loss": 0.8576111972332001
+    },
+    {
+      "epoch": 10,
+      "ge2e_loss": 0.9944784939289093
+    },
+    {
+      "epoch": 11,
+      "ge2e_loss": 0.9023762106895447
+    },
+    {
+      "epoch": 12,
+      "ge2e_loss": 0.7777611315250397
+    },
+    {
+      "epoch": 13,
+      "ge2e_loss": 0.7235058963298797
+    },
+    {
+      "epoch": 14,
+      "ge2e_loss": 0.7179243922233581
+    },
+    {
+      "epoch": 15,
+      "ge2e_loss": 0.5288562536239624
+    },
+    {
+      "epoch": 16,
+      "ge2e_loss": 0.6026525169610977
+    },
+    {
+      "epoch": 17,
+      "ge2e_loss": 0.6156638622283935
+    },
+    {
+      "epoch": 18,
+      "ge2e_loss": 0.5418555259704589
+    },
+    {
+      "epoch": 19,
+      "ge2e_loss": 0.5947362512350083
+    },
+    {
+      "epoch": 20,
+      "ge2e_loss": 0.5970146596431732
+    },
+    {
+      "epoch": 21,
+      "ge2e_loss": 0.5858609437942505
+    },
+    {
+      "epoch": 22,
+      "ge2e_loss": 0.5823092222213745
+    },
+    {
+      "epoch": 23,
+      "ge2e_loss": 0.47278118431568145
+    },
+    {
+      "epoch": 24,
+      "ge2e_loss": 0.3912627577781677
+    },
+    {
+      "epoch": 25,
+      "ge2e_loss": 0.41365304589271545
+    }
+  ],
+  "exported_files": {
+    "config_path": "pretrained_models/wavenet_speaker_verifier_mulaw/config.json",
+    "safetensors_path": "pretrained_models/wavenet_speaker_verifier_mulaw/model.safetensors",
+    "saved_model_dir": "pretrained_models/wavenet_speaker_verifier_mulaw/saved_model",
+    "tflite": {
+      "fp32_path": "pretrained_models/wavenet_speaker_verifier_mulaw/model_fp32.tflite",
+      "fp32_size_bytes": 1537988,
+      "fp32_verified": true,
+      "int8_path": "pretrained_models/wavenet_speaker_verifier_mulaw/model_int8.tflite",
+      "int8_size_bytes": 597792,
+      "int8_verified": true,
+      "output_shape": [
+        1,
+        64
+      ]
+    },
+    "gguf_f16_path": "pretrained_models/wavenet_speaker_verifier_mulaw/model_f16.gguf",
+    "gguf_q4_k_m_path": "pretrained_models/wavenet_speaker_verifier_mulaw/model_q4_k_m.gguf",
+    "gguf_verified_tensors": 18
+  }
+}

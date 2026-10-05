@@ -1,0 +1,130 @@
+{
+  "task": "speaker_verifier",
+  "domain": "coded",
+  "num_speakers": 48,
+  "training_time_sec": 44.33,
+  "initial_ge2e_loss": 2.3220332860946655,
+  "final_ge2e_loss": 1.5244902610778808,
+  "history": [
+    {
+      "epoch": 1,
+      "ge2e_loss": 2.3220332860946655
+    },
+    {
+      "epoch": 2,
+      "ge2e_loss": 2.232277536392212
+    },
+    {
+      "epoch": 3,
+      "ge2e_loss": 2.141652297973633
+    },
+    {
+      "epoch": 4,
+      "ge2e_loss": 2.1204904675483705
+    },
+    {
+      "epoch": 5,
+      "ge2e_loss": 2.0243171215057374
+    },
+    {
+      "epoch": 6,
+      "ge2e_loss": 1.970110785961151
+    },
+    {
+      "epoch": 7,
+      "ge2e_loss": 1.9378716945648193
+    },
+    {
+      "epoch": 8,
+      "ge2e_loss": 1.7985769391059876
+    },
+    {
+      "epoch": 9,
+      "ge2e_loss": 1.7655069828033447
+    },
+    {
+      "epoch": 10,
+      "ge2e_loss": 1.9038129568099975
+    },
+    {
+      "epoch": 11,
+      "ge2e_loss": 1.7055822968482972
+    },
+    {
+      "epoch": 12,
+      "ge2e_loss": 1.7111473202705383
+    },
+    {
+      "epoch": 13,
+      "ge2e_loss": 1.6712666034698487
+    },
+    {
+      "epoch": 14,
+      "ge2e_loss": 1.7042091012001037
+    },
+    {
+      "epoch": 15,
+      "ge2e_loss": 1.6655200004577637
+    },
+    {
+      "epoch": 16,
+      "ge2e_loss": 1.6285862565040587
+    },
+    {
+      "epoch": 17,
+      "ge2e_loss": 1.585394036769867
+    },
+    {
+      "epoch": 18,
+      "ge2e_loss": 1.5365083932876586
+    },
+    {
+      "epoch": 19,
+      "ge2e_loss": 1.5383484959602356
+    },
+    {
+      "epoch": 20,
+      "ge2e_loss": 1.6355093240737915
+    },
+    {
+      "epoch": 21,
+      "ge2e_loss": 1.5094257950782777
+    },
+    {
+      "epoch": 22,
+      "ge2e_loss": 1.4539727091789245
+    },
+    {
+      "epoch": 23,
+      "ge2e_loss": 1.4603132605552673
+    },
+    {
+      "epoch": 24,
+      "ge2e_loss": 1.3836883187294007
+    },
+    {
+      "epoch": 25,
+      "ge2e_loss": 1.5244902610778808
+    }
+  ],
+  "exported_files": {
+    "config_path": "pretrained_models/wavenet_speaker_verifier_coded/config.json",
+    "safetensors_path": "pretrained_models/wavenet_speaker_verifier_coded/model.safetensors",
+    "saved_model_dir": "pretrained_models/wavenet_speaker_verifier_coded/saved_model",
+    "tflite": {
+      "fp32_path": "pretrained_models/wavenet_speaker_verifier_coded/model_fp32.tflite",
+      "fp32_size_bytes": 1537988,
+      "fp32_verified": true,
+      "int8_path": "pretrained_models/wavenet_speaker_verifier_coded/model_int8.tflite",
+      "int8_size_bytes": 597792,
+      "int8_verified": true,
+      "output_shape": [
+        1,
+        64
+      ]
+    },
+    "gguf_f16_path": "pretrained_models/wavenet_speaker_verifier_coded/model_f16.gguf",
+    "gguf_q4_k_m_path": "pretrained_models/wavenet_speaker_verifier_coded/model_q4_k_m.gguf",
+    "gguf_verified_tensors": 18
+  }
+}

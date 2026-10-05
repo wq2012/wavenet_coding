@@ -1,0 +1,73 @@
+{
+  "task": "wavenet",
+  "mode": "waveform",
+  "speaker_overlapping": false,
+  "num_train_windows": 48,
+  "num_eval_windows": 16,
+  "training_time_sec": 187.79,
+  "initial_eval_bits_per_sample": 5.497945785522461,
+  "final_eval_bits_per_sample": 5.241023063659668,
+  "history": [
+    {
+      "epoch": 1,
+      "train_loss_bits_per_sample": 6.706890265146892,
+      "eval_cross_entropy_bits_per_sample": 5.695452690124512
+    },
+    {
+      "epoch": 2,
+      "train_loss_bits_per_sample": 6.386214256286621,
+      "eval_cross_entropy_bits_per_sample": 5.431291580200195
+    },
+    {
+      "epoch": 3,
+      "train_loss_bits_per_sample": 6.12939437230428,
+      "eval_cross_entropy_bits_per_sample": 5.330618858337402
+    },
+    {
+      "epoch": 4,
+      "train_loss_bits_per_sample": 5.888708432515462,
+      "eval_cross_entropy_bits_per_sample": 5.3388352394104
+    },
+    {
+      "epoch": 5,
+      "train_loss_bits_per_sample": 5.701914151509603,
+      "eval_cross_entropy_bits_per_sample": 5.285624980926514
+    },
+    {
+      "epoch": 6,
+      "train_loss_bits_per_sample": 5.6265692710876465,
+      "eval_cross_entropy_bits_per_sample": 5.294033050537109
+    },
+    {
+      "epoch": 7,
+      "train_loss_bits_per_sample": 5.596172014872233,
+      "eval_cross_entropy_bits_per_sample": 5.288949012756348
+    },
+    {
+      "epoch": 8,
+      "train_loss_bits_per_sample": 5.530875523885091,
+      "eval_cross_entropy_bits_per_sample": 5.241023063659668
+    }
+  ],
+  "exported_files": {
+    "config_path": "pretrained_models/wavenet_waveform_coder/config.json",
+    "safetensors_path": "pretrained_models/wavenet_waveform_coder/model.safetensors",
+    "saved_model_dir": "pretrained_models/wavenet_waveform_coder/saved_model",
+    "tflite": {
+      "fp32_path": "pretrained_models/wavenet_waveform_coder/model_fp32.tflite",
+      "fp32_size_bytes": 2697196,
+      "fp32_verified": true,
+      "int8_path": "pretrained_models/wavenet_waveform_coder/model_int8.tflite",
+      "int8_size_bytes": 924192,
+      "int8_verified": true,
+      "output_shape": [
+        1,
+        320,
+        256
+      ]
+    },
+    "gguf_f16_path": "pretrained_models/wavenet_waveform_coder/model_f16.gguf",
+    "gguf_q4_k_m_path": "pretrained_models/wavenet_waveform_coder/model_q4_k_m.gguf",
+    "gguf_verified_tensors": 164
+  }
+}

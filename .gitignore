@@ -1,0 +1,16 @@
+*.pyc
+__pycache__/
+build/
+dist/
+*.egg-info/
+.coverage
+.pytest_cache/
+.pytype/
+checkpoints/
+data/
+*.tfrecord
+*.npz
+pretrained_models/*/*.safetensors
+pretrained_models/*/*.tflite
+pretrained_models/*/*.gguf
+pretrained_models/*/saved_model/

@@ -1,0 +1,19 @@
+# Closed-loop WaveNet Waveform Coder with Arithmetic Coding (WW, Section 2.3)
+mode: "waveform"
+sample_rate: 16000
+quantization_channels: 256
+mu: 255
+num_blocks: 2
+layers_per_block: 10
+residual_channels: 64
+dilation_channels: 64
+skip_channels: 128
+filter_width: 2
+use_conditioning: false
+cond_dim: 0
+cond_frame_rate_hz: 100
+cond_conv_channels: 0
+cond_conv_kernel_size: 1
+voiced_loss_weight: 1.0
+learning_rate: 0.001
+speaker_overlapping: false

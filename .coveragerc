@@ -1,0 +1,13 @@
+[run]
+source = wavenet_coding
+omit =
+    tests/*
+    setup.py
+    scripts/*
+    */__autograph_generated_file*
+
+[report]
+ignore_errors = True
+exclude_lines =
+    pragma: no cover
+    if __name__ == .__main__.:

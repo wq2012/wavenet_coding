@@ -1,0 +1,12 @@
+# GE2E Projected-LSTM Speaker Verification Model (Section 3.4)
+sample_rate: 16000
+frame_length_ms: 25.0
+frame_step_ms: 10.0
+n_mels: 40
+num_lstm_layers: 3
+lstm_units: 128
+projection_dim: 64
+normalize_l2: true
+ge2e_init_w: 10.0
+ge2e_init_b: -5.0
+learning_rate: 0.005

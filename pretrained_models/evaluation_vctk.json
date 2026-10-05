@@ -1,0 +1,125 @@
+{
+  "num_eval_utterances": 16,
+  "section_3_2_waveform_coding_rates": {
+    "mean_entropy_bits_per_sample": 5.7457,
+    "mean_entropy_kbps": 91.93,
+    "cross_entropy_bits_per_sample": 5.8275,
+    "cross_entropy_rate_kbps": 93.24,
+    "lossless_exact_match_rate": 1.0
+  },
+  "section_3_3_codec_comparison": {
+    "Reference (16 kHz)": {
+      "bitrate_kbps": 256.0,
+      "objective_mos_lqo": 4.85,
+      "mcd_db": 0.0,
+      "lsd_db": 0.0,
+      "segmental_snr_db": 45.0,
+      "high_band_energy_ratio_percent": 1.826
+    },
+    "8-bit mu-law (128 kb/s)": {
+      "bitrate_kbps": 128.0,
+      "objective_mos_lqo": 4.697,
+      "mcd_db": 0.501,
+      "lsd_db": 0.648,
+      "segmental_snr_db": 37.162,
+      "high_band_energy_ratio_percent": 1.834
+    },
+    "WaveNet Waveform (WW)": {
+      "bitrate_kbps": 93.24,
+      "objective_mos_lqo": 4.697,
+      "mcd_db": 0.501,
+      "lsd_db": 0.648,
+      "segmental_snr_db": 37.162,
+      "high_band_energy_ratio_percent": 1.834
+    },
+    "AMR-WB (23.85 kb/s)": {
+      "bitrate_kbps": 23.85,
+      "objective_mos_lqo": 3.364,
+      "mcd_db": 3.541,
+      "lsd_db": 5.359,
+      "segmental_snr_db": 8.749,
+      "high_band_energy_ratio_percent": 1.563
+    },
+    "WaveNet Parametric (W_w, 2.4 kb/s)": {
+      "bitrate_kbps": 2.4,
+      "objective_mos_lqo": 3.11,
+      "mcd_db": 4.21,
+      "lsd_db": 4.056,
+      "segmental_snr_db": 4.352,
+      "high_band_energy_ratio_percent": 2.064
+    },
+    "WaveNet Parametric (W_wo, 2.4 kb/s)": {
+      "bitrate_kbps": 2.4,
+      "objective_mos_lqo": 2.131,
+      "mcd_db": 8.193,
+      "lsd_db": 8.397,
+      "segmental_snr_db": 1.972,
+      "high_band_energy_ratio_percent": 1.51
+    },
+    "MELP (2.4 kb/s)": {
+      "bitrate_kbps": 2.4,
+      "objective_mos_lqo": 1.454,
+      "mcd_db": 9.397,
+      "lsd_db": 9.09,
+      "segmental_snr_db": -2.683,
+      "high_band_energy_ratio_percent": 0.033
+    },
+    "Codec 2 (2.4 kb/s)": {
+      "bitrate_kbps": 2.4,
+      "objective_mos_lqo": 1.356,
+      "mcd_db": 10.187,
+      "lsd_db": 8.785,
+      "segmental_snr_db": -2.545,
+      "high_band_energy_ratio_percent": 0.015
+    },
+    "Speex (2.15 kb/s)": {
+      "bitrate_kbps": 2.15,
+      "objective_mos_lqo": 1.722,
+      "mcd_db": 8.392,
+      "lsd_db": 8.341,
+      "segmental_snr_db": 0.257,
+      "high_band_energy_ratio_percent": 0.038
+    }
+  },
+  "section_3_4_speaker_identification": {
+    "mulaw_speech_eer": {
+      "eer_percent": 25.0,
+      "eer_ci95_low_percent": 11.595982142857144,
+      "eer_ci95_high_percent": 42.44419642857144,
+      "ci_95_low_percent": 11.595982142857144,
+      "ci_95_high_percent": 42.44419642857144,
+      "threshold": 0.2121775659214813,
+      "mean_genuine_cosine": 0.3935697310774072,
+      "mean_impostor_cosine": 0.0036658837067926322
+    },
+    "wavenet_parametric_w_wo_eer": {
+      "eer_percent": 37.05357142857143,
+      "eer_ci95_low_percent": 20.044642857142858,
+      "eer_ci95_high_percent": 50.524553571428584,
+      "ci_95_low_percent": 20.044642857142858,
+      "ci_95_high_percent": 50.524553571428584,
+      "threshold": 0.8427541969049193,
+      "mean_genuine_cosine": 0.8848814072587434,
+      "mean_impostor_cosine": 0.8005241801782267
+    },
+    "wavenet_parametric_w_w_eer": {
+      "eer_percent": 24.55357142857143,
+      "eer_ci95_low_percent": 12.053571428571429,
+      "eer_ci95_high_percent": 46.886160714285715,
+      "ci_95_low_percent": 12.053571428571429,
+      "ci_95_high_percent": 46.886160714285715,
+      "threshold": 0.4774760105853959,
+      "mean_genuine_cosine": 0.6204015199832023,
+      "mean_impostor_cosine": 0.18491605664772884
+    },
+    "triangle_test_w_w_vs_w_wo": {
+      "mean_cosine_orig_vs_w_wo": 0.2806833882483422,
+      "mean_cosine_orig_vs_w_w": 0.5796352731348118,
+      "mean_cosine_w_wo_vs_w_w": 0.8056075167477617,
+      "mean_cosine_advantage": 0.2989518848864696,
+      "triangle_test_identification_percent": 42.59985923688519,
+      "triangle_accuracy_percent": 42.59985923688519,
+      "random_chance_baseline_percent": 33.33
+    }
+  }
+}

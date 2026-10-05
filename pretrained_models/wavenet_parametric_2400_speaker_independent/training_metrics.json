@@ -1,0 +1,73 @@
+{
+  "task": "wavenet",
+  "mode": "parametric",
+  "speaker_overlapping": false,
+  "num_train_windows": 48,
+  "num_eval_windows": 16,
+  "training_time_sec": 266.75,
+  "initial_eval_bits_per_sample": 5.50228214263916,
+  "final_eval_bits_per_sample": 5.356439113616943,
+  "history": [
+    {
+      "epoch": 1,
+      "train_loss_bits_per_sample": 6.513084252675374,
+      "eval_cross_entropy_bits_per_sample": 5.6146721839904785
+    },
+    {
+      "epoch": 2,
+      "train_loss_bits_per_sample": 6.22343651453654,
+      "eval_cross_entropy_bits_per_sample": 5.398103713989258
+    },
+    {
+      "epoch": 3,
+      "train_loss_bits_per_sample": 6.01759131749471,
+      "eval_cross_entropy_bits_per_sample": 5.500731945037842
+    },
+    {
+      "epoch": 4,
+      "train_loss_bits_per_sample": 5.863207658131917,
+      "eval_cross_entropy_bits_per_sample": 5.435629844665527
+    },
+    {
+      "epoch": 5,
+      "train_loss_bits_per_sample": 5.734458923339844,
+      "eval_cross_entropy_bits_per_sample": 5.390732288360596
+    },
+    {
+      "epoch": 6,
+      "train_loss_bits_per_sample": 5.653282483418782,
+      "eval_cross_entropy_bits_per_sample": 5.392891883850098
+    },
+    {
+      "epoch": 7,
+      "train_loss_bits_per_sample": 5.620538870493571,
+      "eval_cross_entropy_bits_per_sample": 5.444667339324951
+    },
+    {
+      "epoch": 8,
+      "train_loss_bits_per_sample": 5.5977301597595215,
+      "eval_cross_entropy_bits_per_sample": 5.356439113616943
+    }
+  ],
+  "exported_files": {
+    "config_path": "pretrained_models/wavenet_parametric_2400_speaker_independent/config.json",
+    "safetensors_path": "pretrained_models/wavenet_parametric_2400_speaker_independent/model.safetensors",
+    "saved_model_dir": "pretrained_models/wavenet_parametric_2400_speaker_independent/saved_model",
+    "tflite": {
+      "fp32_path": "pretrained_models/wavenet_parametric_2400_speaker_independent/model_fp32.tflite",
+      "fp32_size_bytes": 3411392,
+      "fp32_verified": true,
+      "int8_path": "pretrained_models/wavenet_parametric_2400_speaker_independent/model_int8.tflite",
+      "int8_size_bytes": 1169960,
+      "int8_verified": true,
+      "output_shape": [
+        1,
+        320,
+        256
+      ]
+    },
+    "gguf_f16_path": "pretrained_models/wavenet_parametric_2400_speaker_independent/model_f16.gguf",
+    "gguf_q4_k_m_path": "pretrained_models/wavenet_parametric_2400_speaker_independent/model_q4_k_m.gguf",
+    "gguf_verified_tensors": 246
+  }
+}

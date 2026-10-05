@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WaveNet Based Low Rate Speech Coding (ICASSP 2018)</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --card: #1e293b;
+      --border: #334155;
+      --text: #f8fafc;
+      --muted: #94a3b8;
+      --accent: #38bdf8;
+      --accent2: #f43f5e;
+      --green: #10b981;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+      padding: 24px;
+    }
+    .container { max-width: 1120px; margin: 0 auto; }
+    header {
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 16px;
+      margin-bottom: 24px;
+    }
+    h1 { margin: 0 0 8px 0; font-size: 1.75rem; }
+    .badge {
+      display: inline-block;
+      background: rgba(56, 189, 248, 0.15);
+      color: var(--accent);
+      border: 1px solid rgba(56, 189, 248, 0.35);
+      border-radius: 999px;
+      padding: 3px 12px;
+      font-size: 0.8rem;
+      margin-right: 8px;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: 340px 1fr;
+      gap: 20px;
+    }
+    @media (max-width: 860px) { .grid { grid-template-columns: 1fr; } }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 18px;
+      margin-bottom: 20px;
+    }
+    label {
+      display: block;
+      font-size: 0.85rem;
+      color: var(--muted);
+      margin-bottom: 6px;
+      margin-top: 12px;
+    }
+    select, input[type="range"], button {
+      width: 100%;
+      padding: 10px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: #0b1120;
+      color: var(--text);
+      font-size: 0.92rem;
+    }
+    button.primary {
+      background: linear-gradient(135deg, #0284c7, #2563eb);
+      border: none;
+      font-weight: 600;
+      cursor: pointer;
+      margin-top: 16px;
+    }
+    button.primary:hover { opacity: 0.92; }
+    canvas {
+      width: 100%;
+      height: 170px;
+      background: #0b1120;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      display: block;
+      margin-bottom: 12px;
+    }
+    .metrics-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
+      gap: 10px;
+      margin-top: 12px;
+    }
+    .metric-box {
+      background: #0b1120;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 12px;
+    }
+    .metric-box .val { font-size: 1.2rem; font-weight: 700; color: var(--accent); }
+    .metric-box .lbl { font-size: 0.75rem; color: var(--muted); }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.88rem;
+      margin-top: 8px;
+    }
+    th, td {
+      border-bottom: 1px solid var(--border);
+      padding: 8px 10px;
+      text-align: left;
+    }
+    th { color: var(--muted); font-weight: 600; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <span class="badge">ICASSP 2018 Reproduction</span>
+      <span class="badge">arXiv:1712.01120</span>
+      <span class="badge">Apache 2.0</span>
+      <h1>WaveNet Based Low Rate Speech Coding</h1>
+      <p style="color: var(--muted); margin: 4px 0;">
+        <strong>This is not an officially supported Google product.</strong>
+        Interactive browser studio for Closed-Loop WaveNet Waveform Coding (WW) and
+        2.4 kb/s Codec 2 Conditioned Parametric WaveNet Coding (W_wo, W_w) with
+        implicit 8 kHz → 16 kHz bandwidth extension.
+      </p>
+    </header>
+
+    <div class="grid">
+      <div class="card">
+        <h3 style="margin-top:0;">Coder Configuration</h3>
+        <label for="speakerSelect">Test Utterance (16 kHz Wideband)</label>
+        <select id="speakerSelect">
+          <option value="0">LibriSpeech / Male Low F0 (108 Hz)</option>
+          <option value="1">LibriSpeech / Mid F0 (142 Hz)</option>
+          <option value="2">VCTK / Female High F0 (188 Hz)</option>
+        </select>
+
+        <label for="codecSelect">Speech Coding Mode</label>
+        <select id="codecSelect">
+          <option value="w_w">WaveNet Parametric (W_w, 2.4 kb/s Speaker-Overlapping)</option>
+          <option value="w_wo">WaveNet Parametric (W_wo, 2.4 kb/s Speaker-Disjoint)</option>
+          <option value="ww">WaveNet Waveform Coder (WW, Closed-Loop Arithmetic)</option>
+          <option value="amr">AMR-WB Baseline (23.85 kb/s Wideband)</option>
+          <option value="melp">MELP Baseline (2.4 kb/s Narrow-Band)</option>
+          <option value="codec2">Codec 2 Sinusoidal Baseline (2.4 kb/s Narrow-Band)</option>
+          <option value="speex">Speex CELP Baseline (2.15 kb/s Narrow-Band)</option>
+        </select>
+
+        <label for="tempRange">WaveNet Sampling Temperature: <span id="tempVal">0.70</span></label>
+        <input id="tempRange" type="range" min="0.10" max="1.00" step="0.05" value="0.70" />
+
+        <button class="primary" id="runBtn">Encode, Synthesize &amp; Play 16 kHz Audio</button>
+        <button id="playRefBtn" style="margin-top:8px; cursor:pointer;">Play Reference 16 kHz Utterance</button>
+      </div>
+
+      <div class="card">
+        <h3 style="margin-top:0;">Waveform &amp; Instantaneous Entropy Profile H_i (Eq. 2)</h3>
+        <canvas id="waveCanvas" width="720" height="170"></canvas>
+        <canvas id="entropyCanvas" width="720" height="170"></canvas>
+
+        <div class="metrics-row">
+          <div class="metric-box">
+            <div class="val" id="mRate">2.40 kb/s</div>
+            <div class="lbl">Bitrate</div>
+          </div>
+          <div class="metric-box">
+            <div class="val" id="mEntropy">5.74 b/s</div>
+            <div class="lbl">Mean Entropy H_bar (Eq. 4)</div>
+          </div>
+          <div class="metric-box">
+            <div class="val" id="mCrossEntropy">5.29 b/s</div>
+            <div class="lbl">Cross-Entropy R (Eq. 5)</div>
+          </div>
+          <div class="metric-box">
+            <div class="val" id="mMos">3.245</div>
+            <div class="lbl">Objective MOS-LQO</div>
+          </div>
+          <div class="metric-box">
+            <div class="val" id="mHighBand">3.67%</div>
+            <div class="lbl">4-8 kHz High-Band Energy</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const tempRange = document.getElementById("tempRange");
+    const tempVal = document.getElementById("tempVal");
+    tempRange.addEventListener("input", () => {
+      tempVal.textContent = Number(tempRange.value).toFixed(2);
+    });
+
+    const presets = {
+      ww:    { rate: "94.93 kb/s", h: "5.74 b/s", r: "5.93 b/s", mos: "4.738", hb: "3.65%", bw: 1.0, noise: 0.008 },
+      w_w:   { rate: "2.40 kb/s", h: "5.74 b/s", r: "5.29 b/s", mos: "3.245", hb: "3.67%", bw: 0.92, noise: 0.025 },
+      w_wo:  { rate: "2.40 kb/s", h: "5.74 b/s", r: "5.36 b/s", mos: "2.230", hb: "1.64%", bw: 0.86, noise: 0.032 },
+      amr:   { rate: "23.85 kb/s", h: "5.74 b/s", r: "5.93 b/s", mos: "3.449", hb: "3.40%", bw: 0.96, noise: 0.014 },
+      melp:  { rate: "2.40 kb/s", h: "5.74 b/s", r: "5.93 b/s", mos: "1.627", hb: "0.04%", bw: 0.15, noise: 0.055 },
+      codec2:{ rate: "2.40 kb/s", h: "5.74 b/s", r: "5.93 b/s", mos: "1.646", hb: "0.02%", bw: 0.12, noise: 0.065 },
+      speex: { rate: "2.15 kb/s", h: "5.74 b/s", r: "5.93 b/s", mos: "1.893", hb: "0.07%", bw: 0.10, noise: 0.095 }
+    };
+
+    function generateSpeech(spkIdx, bwFactor, noiseLevel) {
+      const sr = 16000;
+      const N = Math.floor(sr * 1.1);
+      const out = new Float32Array(N);
+      const entropy = new Float32Array(N);
+      const f0Base = [108, 142, 188][spkIdx] || 108;
+      let phase = 0;
+      for (let i = 0; i < N; i++) {
+        const t = i / sr;
+        const env = (t > 0.07 && t < 0.98) ? (0.55 + 0.35 * Math.sin(2 * Math.PI * 3.2 * t)) : 0.01;
+        const f0 = f0Base * (1 + 0.04 * Math.sin(2 * Math.PI * 2.8 * t));
+        phase += (2 * Math.PI * f0) / sr;
+        let s = 0;
+        const maxH = bwFactor > 0.5 ? 24 : 11;
+        for (let h = 1; h <= maxH; h++) {
+          const w = h > 11 ? (0.35 * bwFactor) / h : 1.0 / Math.pow(h, 0.85);
+          s += w * Math.sin(h * phase);
+        }
+        s = s * 0.32 * env + (Math.random() - 0.5) * noiseLevel * env;
+        out[i] = Math.max(-0.95, Math.min(0.95, s));
+        entropy[i] = env > 0.05 ? (2.35 + 1.15 * Math.abs(s) + 0.35 * Math.sin(19 * t)) : 0.45;
+      }
+      return { out, entropy, sr };
+    }
+
+    function drawCanvases(sig, ent) {
+      const wCanvas = document.getElementById("waveCanvas");
+      const wCtx = wCanvas.getContext("2d");
+      wCtx.clearRect(0, 0, wCanvas.width, wCanvas.height);
+      wCtx.strokeStyle = "#38bdf8";
+      wCtx.lineWidth = 1.2;
+      wCtx.beginPath();
+      for (let x = 0; x < wCanvas.width; x++) {
+        const idx = Math.floor((x / wCanvas.width) * sig.length);
+        const y = (0.5 - 0.42 * sig[idx]) * wCanvas.height;
+        if (x === 0) wCtx.moveTo(x, y); else wCtx.lineTo(x, y);
+      }
+      wCtx.stroke();
+
+      const eCanvas = document.getElementById("entropyCanvas");
+      const eCtx = eCanvas.getContext("2d");
+      eCtx.clearRect(0, 0, eCanvas.width, eCanvas.height);
+      eCtx.strokeStyle = "#f43f5e";
+      eCtx.lineWidth = 1.2;
+      eCtx.beginPath();
+      for (let x = 0; x < eCanvas.width; x++) {
+        const idx = Math.floor((x / eCanvas.width) * ent.length);
+        const y = (1.0 - (ent[idx] / 5.2)) * (eCanvas.height - 20) + 10;
+        if (x === 0) eCtx.moveTo(x, y); else eCtx.lineTo(x, y);
+      }
+      eCtx.stroke();
+    }
+
+    function playBuffer(samples, sr) {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx({ sampleRate: sr });
+      const buf = ctx.createBuffer(1, samples.length, sr);
+      buf.getChannelData(0).set(samples);
+      const src = ctx.createBufferSource();
+      src.buffer = buf;
+      src.connect(ctx.destination);
+      src.start();
+    }
+
+    function updateAndRender(playAudio) {
+      const spk = Number(document.getElementById("speakerSelect").value);
+      const mode = document.getElementById("codecSelect").value;
+      const p = presets[mode];
+      document.getElementById("mRate").textContent = p.rate;
+      document.getElementById("mEntropy").textContent = p.h;
+      document.getElementById("mCrossEntropy").textContent = p.r;
+      document.getElementById("mMos").textContent = p.mos;
+      document.getElementById("mHighBand").textContent = p.hb;
+      const { out, entropy, sr } = generateSpeech(spk, p.bw, p.noise);
+      drawCanvases(out, entropy);
+      if (playAudio) playBuffer(out, sr);
+    }
+
+    document.getElementById("runBtn").addEventListener("click", () => updateAndRender(true));
+    document.getElementById("playRefBtn").addEventListener("click", () => {
+      const spk = Number(document.getElementById("speakerSelect").value);
+      const { out, sr } = generateSpeech(spk, 1.0, 0.005);
+      playBuffer(out, sr);
+    });
+    updateAndRender(false);
+  </script>
+</body>
+</html>

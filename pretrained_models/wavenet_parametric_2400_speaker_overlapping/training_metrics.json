@@ -1,0 +1,73 @@
+{
+  "task": "wavenet",
+  "mode": "parametric",
+  "speaker_overlapping": true,
+  "num_train_windows": 48,
+  "num_eval_windows": 16,
+  "training_time_sec": 268.88,
+  "initial_eval_bits_per_sample": 5.49929666519165,
+  "final_eval_bits_per_sample": 5.2905049324035645,
+  "history": [
+    {
+      "epoch": 1,
+      "train_loss_bits_per_sample": 5.312480131785075,
+      "eval_cross_entropy_bits_per_sample": 5.761954307556152
+    },
+    {
+      "epoch": 2,
+      "train_loss_bits_per_sample": 5.28000020980835,
+      "eval_cross_entropy_bits_per_sample": 5.567407131195068
+    },
+    {
+      "epoch": 3,
+      "train_loss_bits_per_sample": 5.135010242462158,
+      "eval_cross_entropy_bits_per_sample": 5.488289833068848
+    },
+    {
+      "epoch": 4,
+      "train_loss_bits_per_sample": 5.075396378835042,
+      "eval_cross_entropy_bits_per_sample": 5.387685775756836
+    },
+    {
+      "epoch": 5,
+      "train_loss_bits_per_sample": 5.0308553377787275,
+      "eval_cross_entropy_bits_per_sample": 5.411098480224609
+    },
+    {
+      "epoch": 6,
+      "train_loss_bits_per_sample": 5.0228908856709795,
+      "eval_cross_entropy_bits_per_sample": 5.328472137451172
+    },
+    {
+      "epoch": 7,
+      "train_loss_bits_per_sample": 4.977565924326579,
+      "eval_cross_entropy_bits_per_sample": 5.302889347076416
+    },
+    {
+      "epoch": 8,
+      "train_loss_bits_per_sample": 4.952180067698161,
+      "eval_cross_entropy_bits_per_sample": 5.2905049324035645
+    }
+  ],
+  "exported_files": {
+    "config_path": "pretrained_models/wavenet_parametric_2400_speaker_overlapping/config.json",
+    "safetensors_path": "pretrained_models/wavenet_parametric_2400_speaker_overlapping/model.safetensors",
+    "saved_model_dir": "pretrained_models/wavenet_parametric_2400_speaker_overlapping/saved_model",
+    "tflite": {
+      "fp32_path": "pretrained_models/wavenet_parametric_2400_speaker_overlapping/model_fp32.tflite",
+      "fp32_size_bytes": 3411392,
+      "fp32_verified": true,
+      "int8_path": "pretrained_models/wavenet_parametric_2400_speaker_overlapping/model_int8.tflite",
+      "int8_size_bytes": 1169960,
+      "int8_verified": true,
+      "output_shape": [
+        1,
+        320,
+        256
+      ]
+    },
+    "gguf_f16_path": "pretrained_models/wavenet_parametric_2400_speaker_overlapping/model_f16.gguf",
+    "gguf_q4_k_m_path": "pretrained_models/wavenet_parametric_2400_speaker_overlapping/model_q4_k_m.gguf",
+    "gguf_verified_tensors": 246
+  }
+}
