@@ -73,15 +73,19 @@ def run_speech_coding_demo(
     temperature: float,
 ) -> Tuple[Tuple[int, np.ndarray], Tuple[int, np.ndarray], Any, str]:
   """Runs the selected WaveNet or baseline speech coder on an utterance."""
-  synth = dataset.generate_synthetic_speech_dataset(
-      num_speakers=3, utterances_per_speaker=1, duration_sec=0.8
-  )
-  spk_key = {
-      "Speaker A (Male Low F0 ~ 105 Hz)": "spk_00",
-      "Speaker B (Mid F0 ~ 133 Hz)": "spk_01",
-      "Speaker C (Female High F0 ~ 161 Hz)": "spk_02",
-  }.get(preset_choice, "spk_00")
-  wav = synth[spk_key][0]
+  spk_idx = {
+      "Speaker A (Male Low F0 ~ 105 Hz)": 0,
+      "Speaker B (Mid F0 ~ 133 Hz)": 1,
+      "Speaker C (Female High F0 ~ 161 Hz)": 2,
+  }.get(preset_choice, 0)
+  real_wav_path = os.path.join(BASE_DIR, "audio", f"spk_{spk_idx}_ref.wav")
+  if os.path.exists(real_wav_path):
+    wav = dataset.load_audio_16k(real_wav_path)
+  else:
+    synth = dataset.generate_synthetic_speech_dataset(
+        num_speakers=3, utterances_per_speaker=1, duration_sec=0.8
+    )
+    wav = synth[f"spk_{spk_idx:02d}"][0]
   n_frames = max(1, wav.size // 160)
   wav = wav[:n_frames * 160]
 
