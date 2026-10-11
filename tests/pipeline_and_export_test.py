@@ -151,6 +151,15 @@ class PipelineAndExportTest(unittest.TestCase):
       self.assertEqual(len(out["bitstream"]), 11)
       from_bits = loaded_codec.decode_bitstream(out["bitstream"])
       self.assertEqual(from_bits["reconstructed_waveform"].shape, (320,))
+      np.testing.assert_array_equal(
+          out["reconstructed_waveform"], from_bits["reconstructed_waveform"]
+      )
+      loaded_codec.config.speaker_overlapping = False
+      from_bits_flipped = loaded_codec.decode_bitstream(out["bitstream"])
+      np.testing.assert_array_equal(
+          from_bits["reconstructed_waveform"],
+          from_bits_flipped["reconstructed_waveform"],
+      )
       self.assertGreater(
           float(np.std(from_bits["reconstructed_waveform"])), 1e-4
       )

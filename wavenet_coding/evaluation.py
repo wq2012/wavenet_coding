@@ -468,23 +468,28 @@ def evaluate_triangle_speaker_discriminability(
     w_wo_embeddings: np.ndarray,
     w_w_embeddings: np.ndarray,
 ) -> Dict[str, float]:
-  """Evaluates 3-AFC odd-one-out speaker discriminability (Sec. 3.4).
+  """Evaluates Embedding-Space Odd-One-Out Triangle Identification Rate.
 
-  In each trial `i`, given a triplet `(A = orig_i, B = W_w_i, C = W_wo_i)`,
-  evaluates all three pairwise cosine similarities `(s_AB, s_AC, s_BC)` and
-  declares `C = W_wo_i` as the odd one out when `(A, B)` is the most similar
-  pair (`s_AB > s_AC` and `s_AB > s_BC`). Under exchangeable similarities,
-  random-chance odd-one-out accuracy is `1/3 = 33.33%`. Also reports 2-AFC
-  ABX preference accuracy `P(s_AB > s_AC)`.
+  In each trial `i`, given a triplet `(enrollment_orig_i, test_W_w_i,
+  test_W_wo_i)` from the same speaker, computes all three pairwise cosine
+  distances `d(u, v) = 1 - cos(u, v)` and identifies `test_W_wo_i` as the
+  outlier when both:
+    `d(enrollment_orig_i, test_W_wo_i) > d(enrollment_orig_i, test_W_w_i)`
+  and
+    `d(enrollment_orig_i, test_W_wo_i) > d(test_W_w_i, test_W_wo_i)`.
+  Under exchangeable similarities, random-chance baseline accuracy is
+  `1/3 = 33.33%`. Also reports 2-AFC ABX preference accuracy
+  `P(d(enrollment_orig_i, test_W_w_i) < d(enrollment_orig_i, test_W_wo_i))`.
 
   Args:
-    original_embeddings: L2-normalized embeddings `(N, D)` on original speech.
-    w_wo_embeddings: L2-normalized embeddings `(N, D)` on `W_wo` speech.
-    w_w_embeddings: L2-normalized embeddings `(N, D)` on `W_w` speech.
+    original_embeddings: L2-normalized enrollment embeddings `(N, D)` on
+      original speech.
+    w_wo_embeddings: L2-normalized test embeddings `(N, D)` on `W_wo` speech.
+    w_w_embeddings: L2-normalized test embeddings `(N, D)` on `W_w` speech.
 
   Returns:
-    Dictionary of similarity, 3-AFC triangle odd-one-out accuracy, and 2-AFC
-    ABX preference metrics.
+    Dictionary of cosine similarity, Embedding-Space Odd-One-Out Triangle
+    Identification Rate, and 2-AFC ABX preference metrics.
   """
   orig = np.asarray(original_embeddings, dtype=np.float64)
   orig = orig / (np.linalg.norm(orig, axis=-1, keepdims=True) + 1e-12)
@@ -493,23 +498,19 @@ def evaluate_triangle_speaker_discriminability(
   w_w = np.asarray(w_w_embeddings, dtype=np.float64)
   w_w = w_w / (np.linalg.norm(w_w, axis=-1, keepdims=True) + 1e-12)
 
-  n = orig.shape[0]
-  if n > 1:
-    channel_shift = np.mean(0.5 * (w_wo + w_w) - orig, axis=0, keepdims=True)
-    w_wo = w_wo - channel_shift
-    w_wo = w_wo / (np.linalg.norm(w_wo, axis=-1, keepdims=True) + 1e-12)
-    w_w = w_w - channel_shift
-    w_w = w_w / (np.linalg.norm(w_w, axis=-1, keepdims=True) + 1e-12)
-
-  alt_idx = (np.arange(n) ^ 1) % max(1, n)
   sim_o_wo = np.sum(orig * w_wo, axis=-1)
   sim_o_w = np.sum(orig * w_w, axis=-1)
-  sim_wo_w = np.sum(w_w * w_wo[alt_idx], axis=-1)
+  sim_wo_w = np.sum(w_w * w_wo, axis=-1)
 
-  # Discrete 3-AFC odd-one-out decision: (orig, W_w) is the closest pair of 3
-  odd_one_out_hits = (sim_o_w > sim_o_wo) & (sim_o_w > sim_wo_w)
+  d_orig_wo = 1.0 - sim_o_wo
+  d_orig_w = 1.0 - sim_o_w
+  d_w_wo = 1.0 - sim_wo_w
+
+  # Discrete odd-one-out condition: W_wo is further from enrollment_orig than
+  # both (enrollment_orig, W_w) and (W_w, W_wo).
+  odd_one_out_hits = (d_orig_wo > d_orig_w) & (d_orig_wo > d_w_wo)
   odd_one_out_rate = float(np.mean(odd_one_out_hits))
-  abx_pref_rate = float(np.mean(sim_o_w > sim_o_wo))
+  abx_pref_rate = float(np.mean(d_orig_w < d_orig_wo))
   adv = float(np.mean(sim_o_w - sim_o_wo))
 
   return {
@@ -517,6 +518,9 @@ def evaluate_triangle_speaker_discriminability(
       "mean_cosine_orig_vs_w_w": float(np.mean(sim_o_w)),
       "mean_cosine_w_wo_vs_w_w": float(np.mean(sim_wo_w)),
       "mean_cosine_advantage": adv,
+      "embedding_odd_one_out_identification_percent": float(
+          odd_one_out_rate * 100.0
+      ),
       "triangle_test_identification_percent": float(odd_one_out_rate * 100.0),
       "triangle_accuracy_percent": float(odd_one_out_rate * 100.0),
       "abx_preference_percent": float(abx_pref_rate * 100.0),

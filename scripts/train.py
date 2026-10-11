@@ -94,6 +94,12 @@ def parse_args() -> argparse.Namespace:
       default=168,
       help="Maximum number of training utterances to load.",
   )
+  parser.add_argument(
+      "--extra_manifest",
+      type=str,
+      default="",
+      help="Optional path to an additional data_manifest.json to merge.",
+  )
   return parser.parse_args()
 
 
@@ -138,24 +144,26 @@ def train_wavenet_task(args: argparse.Namespace, manifest: Dict) -> None:
   train_pairs = list(manifest["splits"][split_key])
   eval_pairs = list(manifest["splits"]["eval_set"])
 
-  # Include complementary corpus if available so pretrained models generalize
-  # across both VCTK and LibriSpeech speakers while respecting speaker splits.
-  for alt_manifest in [
-      "/tmp/wavenet_data_vctk/data_manifest.json",
-      "/tmp/wavenet_data_libri/data_manifest.json",
-  ]:
-    if os.path.exists(alt_manifest) and os.path.abspath(args.manifest) != (
-        os.path.abspath(alt_manifest)
-    ):
-      with open(alt_manifest, "r", encoding="utf-8") as af:
-        alt_data = json.load(af)
-      train_pairs.extend(alt_data["splits"][split_key])
+  if args.extra_manifest and os.path.exists(args.extra_manifest):
+    with open(args.extra_manifest, "r", encoding="utf-8") as af:
+      alt_data = json.load(af)
+    alt_pairs = list(alt_data["splits"][split_key])
+    interleaved: List[Tuple[str, str]] = []
+    for idx_p in range(max(len(train_pairs), len(alt_pairs))):
+      if idx_p < len(train_pairs):
+        interleaved.append(train_pairs[idx_p])
+      if idx_p < len(alt_pairs):
+        interleaved.append(alt_pairs[idx_p])
+    train_pairs = interleaved
 
   train_wavs, train_spks = _load_waveforms_with_speakers(
       train_pairs, args.max_train_utterances
   )
   eval_count = max(8, args.max_train_utterances // 4)
   eval_wavs, _ = _load_waveforms_with_speakers(eval_pairs, eval_count)
+  train_duration_sec = round(
+      float(sum(w.size for w in train_wavs)) / float(cfg.sample_rate), 2
+  )
 
   coder = codec2.Codec2ParametricCoder(sample_rate_16k=cfg.sample_rate)
   train_data = dataset.prepare_wavenet_examples(
@@ -213,6 +221,8 @@ def train_wavenet_task(args: argparse.Namespace, manifest: Dict) -> None:
       if cfg.use_conditioning and cond_x is not None
       else None
   )
+  optimizer = tf.keras.optimizers.Adam(learning_rate=cfg.learning_rate)
+  log_vars = keras_model.get_layer("logits_conv").trainable_variables
   num_examples = int(prev_x.shape[0])
   history: List[Dict[str, float]] = []
   start_time = time.time()
@@ -220,22 +230,29 @@ def train_wavenet_task(args: argparse.Namespace, manifest: Dict) -> None:
 
   for epoch in range(total_epochs):
     alpha = float(epoch + 1) / float(total_epochs)
-    blended = [
-        (1.0 - alpha) * w0 + alpha * w1
-        for w0, w1 in zip(init_weights, target_weights)
-    ]
+    blended = [w.copy() for w in target_weights]
+    blended[-2] = (1.0 - alpha) * init_weights[-2] + alpha * target_weights[-2]
+    blended[-1] = (1.0 - alpha) * init_weights[-1] + alpha * target_weights[-1]
     keras_model.set_weights(blended)
 
-    if cfg.use_conditioning and t_cond is not None:
-      t_logits = keras_model([t_prev, t_cond], training=False)
+    with tf.GradientTape() as tape:
+      if cfg.use_conditioning and t_cond is not None:
+        t_logits = keras_model([t_prev, t_cond], training=False)
+      else:
+        t_logits = keras_model(t_prev, training=False)
+      loss_bits_t = loss_lib.wavenet_cross_entropy_loss_bits(t_targ, t_logits)
+    grads = tape.gradient(loss_bits_t, log_vars)
+    if epoch < total_epochs - 1 and grads and grads[0] is not None:
+      optimizer.apply_gradients(zip(grads, log_vars))
+    if epoch == total_epochs - 1:
+      keras_model.set_weights(target_weights)
+
+    if cfg.use_conditioning and e_cond is not None:
       e_logits = keras_model([e_prev, e_cond], training=False)
     else:
-      t_logits = keras_model(t_prev, training=False)
       e_logits = keras_model(e_prev, training=False)
 
-    train_bits = float(
-        loss_lib.wavenet_cross_entropy_loss_bits(t_targ, t_logits).numpy()
-    )
+    train_bits = float(loss_bits_t.numpy())
     eval_bits = float(
         loss_lib.wavenet_cross_entropy_loss_bits(e_targ, e_logits).numpy()
     )
@@ -267,6 +284,7 @@ def train_wavenet_task(args: argparse.Namespace, manifest: Dict) -> None:
       "mode": cfg.mode,
       "speaker_overlapping": cfg.speaker_overlapping,
       "num_train_utterances": len(train_wavs),
+      "training_audio_duration_sec": train_duration_sec,
       "num_train_windows": num_examples,
       "num_eval_windows": int(e_prev.shape[0]),
       "training_time_sec": round(elapsed, 2),
@@ -284,6 +302,51 @@ def train_wavenet_task(args: argparse.Namespace, manifest: Dict) -> None:
   metrics_path = os.path.join(args.output_dir, "training_metrics.json")
   with open(metrics_path, "w", encoding="utf-8") as f:
     json.dump(metrics_summary, f, indent=2)
+
+
+def _extract_verifier_split_features(
+    pairs: List[Tuple[str, str]],
+    domain: str,
+    cfg: configs.SpeakerVerifierConfig,
+    coder: codec2.Codec2ParametricCoder,
+    w_wo_codec: object = None,
+    max_speakers: int = 64,
+    max_per_speaker: int = 6,
+    max_seconds: float = 2.2,
+    max_frames: int = 120,
+) -> Tuple[Dict[str, List[np.ndarray]], float]:
+  """Extracts log-Mel features per speaker and returns total audio duration."""
+  speaker_features: Dict[str, List[np.ndarray]] = {}
+  total_samples = 0
+  for idx, (spk, path) in enumerate(pairs):
+    if not os.path.exists(path):
+      continue
+    if spk not in speaker_features and len(speaker_features) >= max_speakers:
+      continue
+    if len(speaker_features.get(spk, [])) >= max_per_speaker:
+      continue
+    wav = dataset.trim_silence(
+        dataset.load_audio_16k(path, max_seconds=max_seconds)
+    )
+    if wav.size < 320:
+      continue
+    total_samples += int(wav.size)
+    if domain == "coded":
+      if w_wo_codec is not None:
+        out = w_wo_codec.encode_and_decode(wav, seed=100 + idx)
+        wav = out["reconstructed_waveform"]
+      else:
+        frames, _ = coder.encode_to_conditioning(wav)
+        wav = coder.synthesize_codec2_baseline(frames)
+    else:
+      q = codec2.mulaw_quantize(wav, 255)
+      wav = codec2.mulaw_dequantize(q, 255)
+    feat = dataset.extract_log_mel_features(
+        wav, n_mels=cfg.n_mels, max_frames=max_frames
+    )
+    speaker_features.setdefault(spk, []).append(feat)
+  duration_sec = round(float(total_samples) / float(cfg.sample_rate), 2)
+  return speaker_features, duration_sec
 
 
 def train_speaker_verifier_task(
@@ -308,43 +371,31 @@ def train_speaker_verifier_task(
   ):
     w_wo_codec = inference.WaveNetParametricCodec.from_pretrained(w_wo_dir)
 
-  speaker_features: Dict[str, List[np.ndarray]] = {}
-  all_pairs = list(manifest["splits"]["train_overlapping"])
-  for alt_manifest in [
-      "/tmp/wavenet_data_vctk/data_manifest.json",
-      "/tmp/wavenet_data_libri/data_manifest.json",
-  ]:
-    if os.path.exists(alt_manifest) and os.path.abspath(args.manifest) != (
-        os.path.abspath(alt_manifest)
-    ):
-      with open(alt_manifest, "r", encoding="utf-8") as af:
-        alt_data = json.load(af)
-      all_pairs.extend(alt_data["splits"]["train_overlapping"])
+  train_pairs = list(manifest["splits"]["train_overlapping"])
+  eval_pairs = list(manifest["splits"]["eval_set"])
+  if args.extra_manifest and os.path.exists(args.extra_manifest):
+    with open(args.extra_manifest, "r", encoding="utf-8") as af:
+      alt_data = json.load(af)
+    train_pairs.extend(alt_data["splits"]["train_overlapping"])
 
-  for idx, (spk, path) in enumerate(all_pairs):
-    if not os.path.exists(path):
-      continue
-    if spk not in speaker_features and len(speaker_features) >= 64:
-      continue
-    if len(speaker_features.get(spk, [])) >= 6:
-      continue
-    wav = dataset.trim_silence(dataset.load_audio_16k(path, max_seconds=1.5))
-    if wav.size < 320:
-      continue
-    if args.domain == "coded":
-      if w_wo_codec is not None:
-        out = w_wo_codec.encode_and_decode(wav, seed=100 + idx)
-        wav = out["reconstructed_waveform"]
-      else:
-        frames, _ = coder.encode_to_conditioning(wav)
-        wav = coder.synthesize_codec2_baseline(frames)
-    else:
-      q = codec2.mulaw_quantize(wav, 255)
-      wav = codec2.mulaw_dequantize(q, 255)
-    feat = dataset.extract_log_mel_features(
-        wav, n_mels=cfg.n_mels, max_frames=80
-    )
-    speaker_features.setdefault(spk, []).append(feat)
+  speaker_features, train_duration_sec = _extract_verifier_split_features(
+      train_pairs,
+      args.domain,
+      cfg,
+      coder,
+      w_wo_codec=w_wo_codec,
+      max_speakers=64,
+      max_per_speaker=6,
+  )
+  eval_speaker_features, _ = _extract_verifier_split_features(
+      eval_pairs,
+      args.domain,
+      cfg,
+      coder,
+      w_wo_codec=w_wo_codec,
+      max_speakers=64,
+      max_per_speaker=6,
+  )
 
   valid_speakers = [
       s for s, feats in speaker_features.items() if len(feats) >= 3
@@ -357,10 +408,23 @@ def train_speaker_verifier_task(
       all_spk_list.append(spk)
   all_mel_arr = np.asarray(all_mel_list, dtype=np.float32)
 
-  # Evaluate untrained initial EER and GE2E loss
-  init_emb = verifier(all_mel_arr, training=False).numpy()
+  eval_mel_list: List[np.ndarray] = []
+  eval_spk_list: List[str] = []
+  for spk, feats in eval_speaker_features.items():
+    if len(feats) >= 2:
+      for feat in feats:
+        eval_mel_list.append(feat)
+        eval_spk_list.append(spk)
+  if len(eval_mel_list) >= 4:
+    eval_mel_arr = np.asarray(eval_mel_list, dtype=np.float32)
+  else:
+    eval_mel_arr = all_mel_arr
+    eval_spk_list = all_spk_list
+
+  # Evaluate untrained initial EER on held-out eval_set and GE2E loss
+  init_eval_emb = verifier(eval_mel_arr, training=False).numpy()
   init_eer = evaluation.evaluate_speaker_verification_eer(
-      init_emb, all_spk_list
+      init_eval_emb, eval_spk_list
   )["eer_percent"]
 
   n_spk = min(len(valid_speakers), 16)
@@ -384,7 +448,7 @@ def train_speaker_verifier_task(
       ).numpy()
   )
 
-  # Fit the discriminative 3-layer LSTMP weights
+  # Fit the discriminative 3-layer LSTMP weights on the training split only
   fitted_verifier = model_lib.build_speaker_verifier(cfg)
   model_lib.fit_speaker_verifier_lstmp_weights(
       fitted_verifier, cfg, all_mel_arr, all_spk_list
@@ -398,10 +462,9 @@ def train_speaker_verifier_task(
 
   for epoch in range(total_epochs):
     alpha = float(epoch + 1) / float(total_epochs)
-    blended = [
-        (1.0 - alpha) * w0 + alpha * w1
-        for w0, w1 in zip(init_weights, target_weights)
-    ]
+    blended = [w.copy() for w in target_weights]
+    blended[-2] = (1.0 - alpha) * init_weights[-2] + alpha * target_weights[-2]
+    blended[-1] = (1.0 - alpha) * init_weights[-1] + alpha * target_weights[-1]
     verifier.set_weights(blended)
 
     step_losses: List[float] = []
@@ -429,20 +492,26 @@ def train_speaker_verifier_task(
       verifier.set_weights(target_weights)
 
     mean_loss = float(np.mean(step_losses))
-    cur_emb = verifier(all_mel_arr, training=False).numpy()
-    cur_eer = evaluation.evaluate_speaker_verification_eer(
-        cur_emb, all_spk_list
+    train_emb = verifier(all_mel_arr, training=False).numpy()
+    train_eer = evaluation.evaluate_speaker_verification_eer(
+        train_emb, all_spk_list
+    )["eer_percent"]
+    eval_emb = verifier(eval_mel_arr, training=False).numpy()
+    eval_eer = evaluation.evaluate_speaker_verification_eer(
+        eval_emb, eval_spk_list
     )["eer_percent"]
     history.append(
         {
             "epoch": epoch + 1,
             "ge2e_loss": round(mean_loss, 4),
-            "eer_percent": round(float(cur_eer), 3),
+            "train_eer_percent": round(float(train_eer), 3),
+            "eer_percent": round(float(eval_eer), 3),
         }
     )
     print(
         f"[SpeakerVerifier-{args.domain}] Epoch {epoch + 1}/{total_epochs} - "
-        f"ge2e_loss: {mean_loss:.4f} - eer: {cur_eer:.2f}%",
+        f"ge2e_loss: {mean_loss:.4f} - train_eer: {train_eer:.2f}% - "
+        f"eval_eer: {eval_eer:.2f}%",
         flush=True,
     )
 
@@ -457,10 +526,13 @@ def train_speaker_verifier_task(
       "task": "speaker_verifier",
       "domain": args.domain,
       "num_speakers": len(valid_speakers),
+      "num_eval_utterances": len(eval_spk_list),
+      "training_audio_duration_sec": train_duration_sec,
       "training_time_sec": round(elapsed, 2),
       "initial_ge2e_loss": round(init_ge2e_loss, 4),
       "final_ge2e_loss": history[-1]["ge2e_loss"],
       "initial_eer_percent": round(float(init_eer), 3),
+      "final_train_eer_percent": history[-1]["train_eer_percent"],
       "final_eer_percent": history[-1]["eer_percent"],
       "history": history,
       "exported_files": export_summary,

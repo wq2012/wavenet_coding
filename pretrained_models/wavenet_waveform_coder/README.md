@@ -37,35 +37,35 @@ Unconditioned closed-loop autoregressive WaveNet speech coder (`WW`, Section 2.3
 1. `model.safetensors`: Hugging Face SafeTensors FP32 weights.
 2. `config.json`: Complete model architecture and hyperparameter specification (`mode="waveform"`, `use_conditioning=False`).
 3. `saved_model/`: TensorFlow 2 SavedModel directory with serving signatures.
-4. `model_fp32.tflite` (`685,348` bytes) & `model_int8.tflite` (`181,248` bytes): Verified TensorFlow Lite flatbuffers.
+4. `model_fp32.tflite` (`1,112,896` bytes) & `model_int8.tflite` (`237,136` bytes): Verified TensorFlow Lite flatbuffers.
 5. `model_f16.gguf` & `model_q4_k_m.gguf`: Verified GGUF v3 binary files (`164` tensors) for C++/edge inference.
 6. `training_metrics.json` & `evaluation_metrics.json`: Full training curves and benchmark evaluations on LibriSpeech (`test-clean`) and VCTK.
 
 ## Training Progression (`training_metrics.json`)
 
 - **Training Corpus**: `160` speaker-disjoint utterances (`64` windows) from LibriSpeech `test-clean` + CSTR VCTK at 16 kHz (`-18.4 dBFS` active level)
-- **Wall-Clock Training Time**: `14.85 s` (`10` epochs)
+- **Wall-Clock Training Time**: `25.66 s` (`10` epochs)
 - **Initial Eval Cross-Entropy**: `7.0186` bits/sample (`4.8649` nats/sample)
-- **Final Eval Cross-Entropy**: `4.0603` bits/sample (`2.8144` nats/sample)
+- **Final Eval Cross-Entropy**: `4.2561` bits/sample (`2.9501` nats/sample)
 
 ## Evaluation Results — Closed-Loop Waveform Coding Rates (Section 3.2)
 
 | Dataset / Split | Mean Conditional Entropy H̄ (bits/sample) | Theoretical Lower-Bound Bitrate (kb/s) | Cross-Entropy Rate R (bits/sample) | Cross-Entropy Bitrate (kb/s) | Active Arithmetic Coded Rate (bits/sample) | Active Arithmetic Bitrate (kb/s) | Arithmetic Coder Lossless Match Rate |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
 | **Paper Reported (WSJ0, Sec. 3.2, 60-layer conditioned WW)** | 2.6113 (1.81 nats) | 41.78 | 2.6546 (1.84 nats) | 42.47 (~42 kb/s) | — | — | — |
-| **Reproduced — LibriSpeech (`test-clean`, 16 utt)** | **4.8556** | **77.69** | **5.2570** (3.6438 nats) | **84.11** | **5.0156** | **80.25** | **100.0% (16/16)** |
-| **Reproduced — VCTK Corpus (16 utt)** | **4.8433** | **77.49** | **5.0888** (3.5273 nats) | **81.42** | **4.8990** | **78.38** | **100.0% (16/16)** |
+| **Reproduced — LibriSpeech (`test-clean`, 16 utt)** | **4.9232** | **78.77** | **5.4089** (3.7491 nats) | **86.54** | **5.1243** | **81.99** | **100.0% (16/16)** |
+| **Reproduced — VCTK Corpus (16 utt)** | **4.8631** | **77.81** | **4.9755** (3.4488 nats) | **79.61** | **4.8234** | **77.17** | **100.0% (16/16)** |
 
 ### Waveform Quality Comparison (`WW` vs. 8-bit μ-law & 16 kHz Reference)
 
 | Dataset | Codec | Bitrate (kb/s) | ITU-T P.862.2 PESQ-WB ↑ | STOI (0–1) ↑ | F0 RMSE (Hz) ↓ | MCD (dB) ↓ | LSD (dB) ↓ | SegSNR (dB) ↑ | High-Band (4–8 kHz) Energy (%) |
 | :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| **LibriSpeech (`test-clean`)** | **Reference (16 kHz)** | 256.00 | 4.644 | 1.000 | 0.000 | 0.000 | 0.000 | 45.000 | 4.062% |
-| **LibriSpeech (`test-clean`)** | **8-bit μ-law (128 kb/s)** | 128.00 | 4.171 | 0.999 | 0.184 | 0.427 | 0.827 | 35.420 | 4.072% |
-| **LibriSpeech (`test-clean`)** | **WaveNet Waveform (`WW`)** | **84.11 (80.25 active)** | **4.171** | **0.999** | **0.184** | **0.427** | **0.827** | **35.420** | **4.072%** |
-| **VCTK Corpus** | **Reference (16 kHz)** | 256.00 | 4.644 | 1.000 | 0.000 | 0.000 | 0.000 | 45.000 | 1.774% |
-| **VCTK Corpus** | **8-bit μ-law (128 kb/s)** | 128.00 | 3.772 | 0.999 | 0.107 | 0.472 | 0.810 | 34.976 | 1.783% |
-| **VCTK Corpus** | **WaveNet Waveform (`WW`)** | **81.42 (78.38 active)** | **3.772** | **0.999** | **0.107** | **0.472** | **0.810** | **34.976** | **1.783%** |
+| **LibriSpeech (`test-clean`)** | **Reference (16 kHz)** | 256.00 | 4.644 | 1.000 | 0.000 | 0.000 | 0.000 | 45.000 | 5.378% |
+| **LibriSpeech (`test-clean`)** | **8-bit μ-law (128 kb/s)** | 128.00 | 4.141 | 0.999 | 0.103 | 0.470 | 0.870 | 35.144 | 5.388% |
+| **LibriSpeech (`test-clean`)** | **WaveNet Waveform (`WW`)** | **86.54 (81.99 active)** | **4.141** | **0.999** | **0.103** | **0.470** | **0.870** | **35.144** | **5.388%** |
+| **VCTK Corpus** | **Reference (16 kHz)** | 256.00 | 4.644 | 1.000 | 0.000 | 0.000 | 0.000 | 45.000 | 1.604% |
+| **VCTK Corpus** | **8-bit μ-law (128 kb/s)** | 128.00 | 3.721 | 0.999 | 0.121 | 0.552 | 0.860 | 34.748 | 1.613% |
+| **VCTK Corpus** | **WaveNet Waveform (`WW`)** | **79.61 (77.17 active)** | **3.721** | **0.999** | **0.121** | **0.552** | **0.860** | **34.748** | **1.613%** |
 
 ## Usage Examples
 

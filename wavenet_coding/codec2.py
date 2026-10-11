@@ -40,7 +40,6 @@ class Codec2FrameParams:
   voicing_code: int
   conditioning_16d: np.ndarray
   packed_50bit: int = 0
-  codec2_packet: Optional[bytes] = None
 
 
 def pack_50bit_block(
@@ -235,33 +234,6 @@ def lsf_to_lpc(lsf: np.ndarray) -> np.ndarray:
   return a_poly[1:-1].astype(np.float32)
 
 
-def _load_libcodec2() -> Optional[ctypes.CDLL]:
-  """Loads system libcodec2 shared library if available."""
-  for name in ("libcodec2.so.1.2", "libcodec2.so.1", "libcodec2.so"):
-    try:
-      lib = ctypes.CDLL(name)
-      lib.codec2_create.argtypes = [ctypes.c_int]
-      lib.codec2_create.restype = ctypes.c_void_p
-      lib.codec2_destroy.argtypes = [ctypes.c_void_p]
-      lib.codec2_encode.argtypes = [
-          ctypes.c_void_p,
-          ctypes.c_char_p,
-          ctypes.POINTER(ctypes.c_int16),
-      ]
-      lib.codec2_decode.argtypes = [
-          ctypes.c_void_p,
-          ctypes.POINTER(ctypes.c_int16),
-          ctypes.c_char_p,
-      ]
-      return lib
-    except OSError:
-      continue
-  return None
-
-
-_LIBCODEC2 = _load_libcodec2()
-
-
 class _SpeexBits(ctypes.Structure):
   _fields_ = [
       ("chars", ctypes.c_char_p),
@@ -409,11 +381,11 @@ class Codec2ParametricCoder:
     lpc = levinson_durbin(autocorr, self.lsf_order)
     lsf = lpc_to_lsf(lpc)
 
-    full_ac = np.correlate(win_frame, win_frame, mode="full")
-    raw_ac = full_ac[len(win_frame) - 1:]
+    full_ac = np.correlate(ana, ana, mode="full")
+    raw_ac = full_ac[len(ana) - 1:]
     r0 = float(raw_ac[0]) + 1e-9
     min_lag = int(self.sample_rate_8k / 400.0)
-    max_lag = min(len(raw_ac) - 1, int(self.sample_rate_8k / 55.0))
+    max_lag = min(len(raw_ac) - 1, int(self.sample_rate_8k / 60.0))
     search_region = raw_ac[min_lag:max_lag + 1] / r0
     best_idx = int(np.argmax(search_region))
     peak_corr = float(search_region[best_idx])
@@ -522,7 +494,7 @@ class Codec2ParametricCoder:
     wav_16k = wav_16k[:num_frames_10ms * self.hop_16k]
     wav_8k = self._resample(wav_16k, self.sample_rate_16k, self.sample_rate_8k)
 
-    padded_len_8k = (num_frames_10ms + 1) * self.hop_8k
+    padded_len_8k = (num_frames_10ms + 2) * self.hop_8k
     if len(wav_8k) < padded_len_8k:
       wav_8k = np.pad(wav_8k, (0, padded_len_8k - len(wav_8k)))
 
@@ -533,11 +505,9 @@ class Codec2ParametricCoder:
       frame = wav_8k[start:start + self.win_8k]
       if len(frame) < self.win_8k:
         frame = np.pad(frame, (0, self.win_8k - len(frame)))
-      s0 = max(0, start - 20)
-      s1 = min(len(wav_8k), start + self.win_8k + 20)
-      ctx = wav_8k[s0:s1]
-      if len(ctx) < 200:
-        ctx = np.pad(ctx, (0, 200 - len(ctx)))
+      ctx = wav_8k[start:start + 240]
+      if len(ctx) < 240:
+        ctx = np.pad(ctx, (0, 240 - len(ctx)))
       lsf, f0_hz, energy_db, v_code = self._analyze_frame_8k(frame, ctx)
       _, _, _, _, indices = self._quantize_parameters(
           lsf, f0_hz, energy_db, v_code
@@ -548,7 +518,6 @@ class Codec2ParametricCoder:
   def decode_bitstream_to_conditioning(
       self,
       bitstream: bytes,
-      codec2_packets: Optional[List[bytes]] = None,
   ) -> Tuple[List[Codec2FrameParams], np.ndarray]:
     """Unpacks a 50-bit/20ms bitstream into frames and 16 kHz conditioning."""
     block_ints, num_frames_10ms = unpack_bitstream(bitstream)
@@ -573,7 +542,15 @@ class Codec2ParametricCoder:
       lsf_n, f0_n, en_n, v_n, _ = block_params[b_next]
 
       lsf_interp = (1.0 - alpha) * lsf_c + alpha * lsf_n
-      f0_interp = float((1.0 - alpha) * f0_c + alpha * f0_n)
+      if (
+          alpha > 0.0
+          and ((v_c >> 1) & 1)
+          and ((v_n >> 1) & 1)
+          and abs(f0_n - f0_c) < 0.12 * f0_c
+      ):
+        f0_interp = float((1.0 - alpha) * f0_c + alpha * f0_n)
+      else:
+        f0_interp = float(f0_c)
       en_interp = float((1.0 - alpha) * en_c + alpha * en_n)
       v_interp = int(v_c if alpha < 0.5 else v_n)
 
@@ -595,11 +572,6 @@ class Codec2ParametricCoder:
 
       cond_100hz[f_idx] = vec
       lsf_hz = (lsf_interp / np.pi) * (0.5 * self.sample_rate_8k)
-      pkt = (
-          codec2_packets[b_cur]
-          if (codec2_packets is not None and b_cur < len(codec2_packets))
-          else None
-      )
       frames.append(
           Codec2FrameParams(
               lsf_hz=lsf_hz.astype(np.float32),
@@ -609,7 +581,6 @@ class Codec2ParametricCoder:
               voicing_code=v_interp,
               conditioning_16d=vec,
               packed_50bit=b_int_c,
-              codec2_packet=pkt,
           )
       )
 
@@ -634,41 +605,6 @@ class Codec2ParametricCoder:
         block_ints.append(int(indices["packed_50bit"]))
     return pack_bitstream(block_ints, num_frames_10ms)
 
-  def _encode_libcodec2_packets(
-      self,
-      audio_16k: np.ndarray,
-      num_frames_10ms: int,
-  ) -> Optional[List[bytes]]:
-    """Encodes 20 ms 48-bit (6-byte) packets using libcodec2 at 2.4 kb/s."""
-    if _LIBCODEC2 is None:
-      return None
-    wav_8k = self._resample(
-        audio_16k, self.sample_rate_16k, self.sample_rate_8k
-    )
-    # Pad 2 extra 20 ms blocks to cover the 140-sample analysis lookahead
-    num_blocks = max(1, (num_frames_10ms + 1) // 2) + 2
-    padded = np.pad(
-        wav_8k, (0, max(0, num_blocks * self.win_8k - len(wav_8k)))
-    )
-    peak_8k = max(float(np.max(np.abs(wav_8k))), 1e-4)
-    c2_scale = 0.80 / peak_8k
-    pcm_in = np.clip(
-        padded[:num_blocks * self.win_8k] * c2_scale * 32767.0, -32768, 32767
-    ).astype(np.int16)
-    st = _LIBCODEC2.codec2_create(1)  # CODEC2_MODE_2400 = 1 (48 bits / 20 ms)
-    try:
-      packets = []
-      buf = ctypes.create_string_buffer(8)
-      for b_idx in range(num_blocks):
-        in_ptr = pcm_in[
-            b_idx * self.win_8k:(b_idx + 1) * self.win_8k
-        ].ctypes.data_as(ctypes.POINTER(ctypes.c_int16))
-        _LIBCODEC2.codec2_encode(st, buf, in_ptr)
-        packets.append(bytes(buf.raw[:6]))
-      return packets
-    finally:
-      _LIBCODEC2.codec2_destroy(st)
-
   def encode_to_conditioning(
       self,
       audio_16k: np.ndarray,
@@ -678,13 +614,7 @@ class Codec2ParametricCoder:
     num_frames_10ms = max(1, wav_16k.size // self.hop_16k)
     wav_16k = wav_16k[:num_frames_10ms * self.hop_16k]
     bitstream = self.encode_bitstream(wav_16k)
-    c2_packets = self._encode_libcodec2_packets(wav_16k, num_frames_10ms)
-    frames, upsampled = self.decode_bitstream_to_conditioning(
-        bitstream, codec2_packets=c2_packets
-    )
-    if c2_packets is not None and frames:
-      frames[0].codec2_packet = b"".join(c2_packets)
-    return frames, upsampled
+    return self.decode_bitstream_to_conditioning(bitstream)
 
   def synthesize_codec2_baseline(
       self,
@@ -694,97 +624,75 @@ class Codec2ParametricCoder:
     """Conventional low-complexity Codec 2 sinusoidal synthesis at 2.4 kb/s."""
     num_frames = len(frames)
     num_samples_16k = num_frames * self.hop_16k
-    if (
-        _LIBCODEC2 is not None
-        and frames
-        and frames[0].codec2_packet is not None
-        and len(frames[0].codec2_packet) >= 6
-    ):
-      raw = frames[0].codec2_packet
-      if len(raw) % 6 == 0 and len(raw) >= 12:
-        n_pkts = len(raw) // 6
-        packets = [raw[i * 6:(i + 1) * 6] for i in range(n_pkts)]
-      else:
-        packets = []
-        for b_idx in range(max(1, (num_frames + 1) // 2)):
-          f_idx = min(b_idx * 2, num_frames - 1)
-          if frames[f_idx].codec2_packet is not None:
-            packets.append(frames[f_idx].codec2_packet[:6])
-      if packets:
-        st = _LIBCODEC2.codec2_create(1)
-        try:
-          pcm_out = np.zeros(len(packets) * self.win_8k, dtype=np.int16)
-          buf = ctypes.create_string_buffer(8)
-          for b_idx, pkt in enumerate(packets):
-            buf.raw = pkt.ljust(8, b"\x00")
-            out_ptr = pcm_out[
-                b_idx * self.win_8k:(b_idx + 1) * self.win_8k
-            ].ctypes.data_as(ctypes.POINTER(ctypes.c_int16))
-            _LIBCODEC2.codec2_decode(st, out_ptr, buf)
-          out_8k = pcm_out.astype(np.float32) / 32768.0
-          # Compensate fixed 120-sample (15 ms at 8 kHz) libcodec2 lookahead
-          delay_8k = 120 if len(out_8k) >= num_frames * self.hop_8k + 120 else 0
-          out_8k = out_8k[delay_8k:delay_8k + num_frames * self.hop_8k]
-          target_rms = float(
-              np.sqrt(
-                  np.mean([10.0 ** (f.energy_db / 10.0) for f in frames])
-                  + 1e-12
-              )
-          )
-          cur_rms = float(np.sqrt(np.mean(out_8k * out_8k) + 1e-12))
-          out_8k = out_8k * (target_rms / cur_rms)
-          out_16k = self._resample(
-              out_8k, self.sample_rate_8k, self.sample_rate_16k
-          )
-          if len(out_16k) < num_samples_16k:
-            out_16k = np.pad(out_16k, (0, num_samples_16k - len(out_16k)))
-          return out_16k[:num_samples_16k].astype(np.float32)
-        finally:
-          _LIBCODEC2.codec2_destroy(st)
+    if not frames:
+      return np.zeros(0, dtype=np.float32)
 
     rng = np.random.default_rng(seed)
-    out_8k = np.zeros(num_frames * self.hop_8k, dtype=np.float32)
-    harm_phases = np.zeros(40, dtype=np.float64)
-    zi = np.zeros(self.lsf_order, dtype=np.float64)
-    prev_rms = float(10.0 ** (frames[0].energy_db / 20.0)) if frames else 0.01
+    hop = self.hop_8k
+    out_8k = np.zeros(num_frames * hop, dtype=np.float64)
+    phase0 = 0.0
+    prev_lsf = (frames[0].lsf_hz / (0.5 * self.sample_rate_8k)) * np.pi
+    prev_f0 = frames[0].f0_hz
+    prev_rms = float(10.0 ** (frames[0].energy_db / 20.0))
+    zi_noise = np.zeros(self.lsf_order, dtype=np.float64)
 
     for f_idx, frame in enumerate(frames):
-      lsf = (frame.lsf_hz / (0.5 * self.sample_rate_8k)) * np.pi
-      f0_hz = frame.f0_hz
-      energy_db = frame.energy_db
-      low_voiced = float((frame.voicing_code >> 1) & 1)
-      high_voiced = float(frame.voicing_code & 1)
-      target_rms = float(10.0 ** (energy_db / 20.0))
+      cur_lsf = (frame.lsf_hz / (0.5 * self.sample_rate_8k)) * np.pi
+      cur_f0 = frame.f0_hz
+      target_rms = float(10.0 ** (frame.energy_db / 20.0))
+      low_v = float((frame.voicing_code >> 1) & 1)
+      high_v = float(frame.voicing_code & 1)
 
-      lpc = lsf_to_lpc(lsf)
-      t_idx = np.arange(self.hop_8k, dtype=np.float64)
-      excitation = np.zeros(self.hop_8k, dtype=np.float64)
+      lsf_mid = 0.5 * (prev_lsf + cur_lsf)
+      lpc = lsf_to_lpc(lsf_mid).astype(np.float64)
+      a_poly = np.concatenate([[1.0], lpc])
 
-      max_harm = min(36, int((self.sample_rate_8k * 0.48) // f0_hz))
-      for h in range(1, max(1, max_harm + 1)):
-        freq = h * f0_hz
-        is_voiced = low_voiced > 0.5 if freq < 2000.0 else high_voiced > 0.5
-        omega = 2.0 * np.pi * freq / float(self.sample_rate_8k)
-        if is_voiced:
-          excitation += np.cos(harm_phases[h] + omega * t_idx) / (h ** 0.25)
-          harm_phases[h] = (
-              harm_phases[h] + omega * self.hop_8k
-          ) % (2.0 * np.pi)
-        else:
-          noise = rng.standard_normal(self.hop_8k)
-          excitation += 0.45 * noise / np.sqrt(max(max_harm, 1))
+      if low_v > 0.5 and abs(cur_f0 - prev_f0) < 0.12 * cur_f0:
+        f0_vec = np.linspace(prev_f0, cur_f0, hop)
+      else:
+        f0_vec = np.full(hop, cur_f0)
+      omega_vec = 2.0 * np.pi * f0_vec / float(self.sample_rate_8k)
+      inst_phase = phase0 + np.cumsum(omega_vec)
+      phase0 = float(inst_phase[-1] % (2.0 * np.pi))
 
-      a_denom = np.concatenate([[1.0], lpc.astype(np.float64)])
-      synth_frame, zi = signal.lfilter([1.0], a_denom, excitation, zi=zi)
+      max_h = min(38, int((self.sample_rate_8k * 0.48) // max(cur_f0, 55.0)))
+      voiced_sig = np.zeros(hop, dtype=np.float64)
+      if low_v > 0.5 and max_h >= 1:
+        h_idx = np.arange(1, max_h + 1, dtype=np.float64)
+        omega_h = 2.0 * np.pi * h_idx * cur_f0 / float(self.sample_rate_8k)
+        k_idx = np.arange(len(a_poly), dtype=np.float64)
+        denom = np.exp(-1j * np.outer(omega_h, k_idx)) @ a_poly
+        h_resp = 1.0 / (denom + 1e-6)
+        amp_h = np.abs(h_resp) * (1.0 + 0.50 / h_idx)
+        phi_h = np.angle(h_resp)
+        v_mask = np.where(
+            h_idx * cur_f0 < 1800.0, low_v, 0.8 * high_v + 0.2 * low_v
+        )
+        harm_mat = np.cos(np.outer(inst_phase, h_idx) + phi_h[np.newaxis, :])
+        voiced_sig = harm_mat @ (amp_h * v_mask)
+
+      noise = rng.standard_normal(hop)
+      unvoiced_sig, zi_noise = signal.lfilter([1.0], a_poly, noise, zi=zi_noise)
+      if low_v > 0.5:
+        v_rms = float(np.sqrt(np.mean(voiced_sig**2) + 1e-10))
+        u_rms = float(np.sqrt(np.mean(unvoiced_sig**2) + 1e-10))
+        unvoiced_nh = (
+            unvoiced_sig * (v_rms / u_rms) * (0.15 * (1.0 - 0.7 * high_v))
+        )
+        synth_frame = voiced_sig + unvoiced_nh
+      else:
+        synth_frame = unvoiced_sig
+
       cur_rms = float(np.sqrt(np.mean(synth_frame**2) + 1e-10))
-      env = np.linspace(prev_rms, target_rms, self.hop_8k) / cur_rms
-      synth_frame = synth_frame * env
-      prev_rms = target_rms
+      env = np.linspace(prev_rms, target_rms, hop) / cur_rms
+      out_8k[f_idx * hop:(f_idx + 1) * hop] = np.clip(
+          synth_frame * env, -0.98, 0.98
+      )
+      prev_lsf, prev_f0, prev_rms = cur_lsf, cur_f0, target_rms
 
-      start = f_idx * self.hop_8k
-      out_8k[start:start + self.hop_8k] = np.clip(synth_frame, -0.98, 0.98)
-
-    out_16k = self._resample(out_8k, self.sample_rate_8k, self.sample_rate_16k)
+    out_16k = self._resample(
+        out_8k.astype(np.float32), self.sample_rate_8k, self.sample_rate_16k
+    )
     if len(out_16k) < num_samples_16k:
       out_16k = np.pad(out_16k, (0, num_samples_16k - len(out_16k)))
     return out_16k[:num_samples_16k].astype(np.float32)

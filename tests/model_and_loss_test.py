@@ -152,7 +152,16 @@ class ModelAndLossTest(unittest.TestCase):
     model.fit_speaker_verifier_lstmp_weights(
         verifier, spk_cfg, mel_arr, spk_ids
     )
+    for idx in range(spk_cfg.num_lstm_layers):
+      u_k = verifier.get_layer(f"lstm_{idx}").get_weights()[1]
+      self.assertGreater(float(np.linalg.norm(u_k)), 0.1)
     emb = verifier(mel_arr, training=False).numpy()
+    ramp = np.linspace(0.6, 1.4, mel_arr.shape[1], dtype=np.float32)
+    mel_asym = mel_arr * ramp[np.newaxis, :, np.newaxis]
+    emb_f = verifier(mel_asym, training=False).numpy()
+    emb_r = verifier(mel_asym[:, ::-1, :], training=False).numpy()
+    rev_diff = float(np.mean(np.linalg.norm(emb_f - emb_r, axis=-1)))
+    self.assertGreater(rev_diff, 0.025)
     eer_res = evaluation.evaluate_speaker_verification_eer(emb, spk_ids)
     self.assertLess(eer_res["eer_percent"], 10.0)
 
@@ -165,6 +174,22 @@ class ModelAndLossTest(unittest.TestCase):
     self.assertEqual(emb_t.shape, (6, 16))
     self.assertGreater(float(l_val.numpy()), 0.0)
     self.assertTrue(all(g is not None for g in grads))
+
+  def test_active_20layer_wavenet_and_conditioning(self) -> None:
+    synth = dataset.generate_synthetic_speech_dataset(
+        num_speakers=2, utterances_per_speaker=1, duration_sec=0.2
+    )
+    wavs = [synth["spk_00"][0][:320], synth["spk_01"][0][:320]]
+    spks = ["spk_00", "spk_01"]
+    cfg_w = configs.icassp2018_parametric_config(speaker_overlapping=True)
+    m_w = model.build_wavenet_coder(cfg_w)
+    model.fit_wavenet_acoustic_weights(m_w, cfg_w, wavs, speaker_ids=spks)
+
+    for k in range(cfg_w.total_layers):
+      df_k = m_w.get_layer(f"dilated_filter_{k}").get_weights()[0]
+      self.assertGreater(float(np.linalg.norm(df_k)), 1e-3)
+    cu_k = m_w.get_layer("cond_conv").get_weights()[0]
+    self.assertGreater(float(np.linalg.norm(cu_k)), 0.1)
 
 
 if __name__ == "__main__":

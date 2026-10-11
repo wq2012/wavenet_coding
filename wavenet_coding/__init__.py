@@ -30,9 +30,16 @@ from wavenet_coding import inference
 from wavenet_coding import loss
 from wavenet_coding import model
 
-__version__ = "0.2.0"
+WaveNetWaveformCodec = inference.WaveNetWaveformCodec
+WaveNetParametricCodec = inference.WaveNetParametricCodec
+HybridModeSwitchingCodec = inference.HybridModeSwitchingCodec
+
+__version__ = "0.2.1"
 
 __all__ = [
+    "HybridModeSwitchingCodec",
+    "WaveNetParametricCodec",
+    "WaveNetWaveformCodec",
     "codec2",
     "configs",
     "dataset",

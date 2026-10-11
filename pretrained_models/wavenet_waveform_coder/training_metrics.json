@@ -3,73 +3,74 @@
   "mode": "waveform",
   "speaker_overlapping": false,
   "num_train_utterances": 160,
+  "training_audio_duration_sec": 325.12,
   "num_train_windows": 64,
   "num_eval_windows": 16,
-  "training_time_sec": 14.85,
+  "training_time_sec": 25.66,
   "initial_eval_bits_per_sample": 7.0186,
   "initial_eval_nll_nats_per_sample": 4.8649,
-  "final_eval_bits_per_sample": 4.0603,
-  "final_eval_nll_nats_per_sample": 2.8144,
+  "final_eval_bits_per_sample": 4.2561,
+  "final_eval_nll_nats_per_sample": 2.9501,
   "history": [
     {
       "epoch": 1,
-      "train_loss_bits_per_sample": 6.892,
-      "eval_cross_entropy_bits_per_sample": 6.7692,
-      "eval_nll_nats_per_sample": 4.6921
+      "train_loss_bits_per_sample": 6.9295,
+      "eval_cross_entropy_bits_per_sample": 6.7548,
+      "eval_nll_nats_per_sample": 4.682
     },
     {
       "epoch": 2,
-      "train_loss_bits_per_sample": 6.6984,
-      "eval_cross_entropy_bits_per_sample": 6.5453,
-      "eval_nll_nats_per_sample": 4.5368
+      "train_loss_bits_per_sample": 6.1033,
+      "eval_cross_entropy_bits_per_sample": 5.7377,
+      "eval_nll_nats_per_sample": 3.9771
     },
     {
       "epoch": 3,
-      "train_loss_bits_per_sample": 6.5196,
-      "eval_cross_entropy_bits_per_sample": 6.3332,
-      "eval_nll_nats_per_sample": 4.3898
+      "train_loss_bits_per_sample": 5.7087,
+      "eval_cross_entropy_bits_per_sample": 5.1983,
+      "eval_nll_nats_per_sample": 3.6032
     },
     {
       "epoch": 4,
-      "train_loss_bits_per_sample": 6.3548,
-      "eval_cross_entropy_bits_per_sample": 6.131,
-      "eval_nll_nats_per_sample": 4.2497
+      "train_loss_bits_per_sample": 5.5141,
+      "eval_cross_entropy_bits_per_sample": 4.8799,
+      "eval_nll_nats_per_sample": 3.3825
     },
     {
       "epoch": 5,
-      "train_loss_bits_per_sample": 6.2047,
-      "eval_cross_entropy_bits_per_sample": 5.9357,
-      "eval_nll_nats_per_sample": 4.1143
+      "train_loss_bits_per_sample": 5.4215,
+      "eval_cross_entropy_bits_per_sample": 4.673,
+      "eval_nll_nats_per_sample": 3.2391
     },
     {
       "epoch": 6,
-      "train_loss_bits_per_sample": 6.0753,
-      "eval_cross_entropy_bits_per_sample": 5.7441,
-      "eval_nll_nats_per_sample": 3.9815
+      "train_loss_bits_per_sample": 5.3881,
+      "eval_cross_entropy_bits_per_sample": 4.5296,
+      "eval_nll_nats_per_sample": 3.1397
     },
     {
       "epoch": 7,
-      "train_loss_bits_per_sample": 5.9746,
-      "eval_cross_entropy_bits_per_sample": 5.5418,
-      "eval_nll_nats_per_sample": 3.8413
+      "train_loss_bits_per_sample": 5.3927,
+      "eval_cross_entropy_bits_per_sample": 4.4264,
+      "eval_nll_nats_per_sample": 3.0681
     },
     {
       "epoch": 8,
-      "train_loss_bits_per_sample": 5.8965,
-      "eval_cross_entropy_bits_per_sample": 5.2868,
-      "eval_nll_nats_per_sample": 3.6645
+      "train_loss_bits_per_sample": 5.4239,
+      "eval_cross_entropy_bits_per_sample": 4.3507,
+      "eval_nll_nats_per_sample": 3.0157
     },
     {
       "epoch": 9,
-      "train_loss_bits_per_sample": 5.6948,
-      "eval_cross_entropy_bits_per_sample": 4.7803,
-      "eval_nll_nats_per_sample": 3.3135
+      "train_loss_bits_per_sample": 5.4747,
+      "eval_cross_entropy_bits_per_sample": 4.2949,
+      "eval_nll_nats_per_sample": 2.977
     },
     {
       "epoch": 10,
-      "train_loss_bits_per_sample": 5.4515,
-      "eval_cross_entropy_bits_per_sample": 4.0603,
-      "eval_nll_nats_per_sample": 2.8144
+      "train_loss_bits_per_sample": 5.5406,
+      "eval_cross_entropy_bits_per_sample": 4.2561,
+      "eval_nll_nats_per_sample": 2.9501
     }
   ],
   "exported_files": {
@@ -78,10 +79,10 @@
     "saved_model_dir": "pretrained_models/wavenet_waveform_coder/saved_model",
     "tflite": {
       "fp32_path": "pretrained_models/wavenet_waveform_coder/model_fp32.tflite",
-      "fp32_size_bytes": 685348,
+      "fp32_size_bytes": 1112896,
       "fp32_verified": true,
       "int8_path": "pretrained_models/wavenet_waveform_coder/model_int8.tflite",
-      "int8_size_bytes": 181248,
+      "int8_size_bytes": 237136,
       "int8_verified": true,
       "output_shape": [
         1,

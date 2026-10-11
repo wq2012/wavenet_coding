@@ -31,16 +31,35 @@ def parse_args() -> argparse.Namespace:
       description="Encode and decode speech with WaveNet speech coder."
   )
   parser.add_argument(
+      "--action",
+      type=str,
+      default="roundtrip",
+      choices=["roundtrip", "encode", "decode"],
+      help=(
+          "Action to perform: 'roundtrip' (.wav -> .wav), 'encode' (.wav -> "
+          ".bin), or 'decode' (.bin -> .wav)."
+      ),
+  )
+  parser.add_argument(
       "--input_wav",
       type=str,
-      required=True,
+      default="",
       help="Path to input .wav or .flac audio file.",
   )
   parser.add_argument(
       "--output_wav",
       type=str,
-      required=True,
+      default="",
       help="Path where reconstructed 16 kHz .wav will be written.",
+  )
+  parser.add_argument(
+      "--bitstream",
+      "--output_bin",
+      "--input_bin",
+      dest="bitstream",
+      type=str,
+      default="",
+      help="Path to binary .bin bitstream file (for encode, decode, or save).",
   )
   parser.add_argument(
       "--mode",
@@ -70,9 +89,70 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
   """Main entry point."""
   args = parse_args()
+
+  if args.action == "decode":
+    if not args.bitstream or not os.path.exists(args.bitstream):
+      raise ValueError("A valid --bitstream (.bin) file is required.")
+    if not args.output_wav:
+      raise ValueError("--output_wav is required when --action=decode.")
+    with open(args.bitstream, "rb") as bf:
+      raw_bytes = bf.read()
+    if args.model_dir and os.path.exists(args.model_dir):
+      codec = inference.WaveNetParametricCodec.from_pretrained(args.model_dir)
+    else:
+      codec = inference.WaveNetParametricCodec()
+    dec = codec.decode_bitstream(raw_bytes, temperature=args.temperature)
+    rec = dec["reconstructed_waveform"]
+    os.makedirs(
+        os.path.dirname(os.path.abspath(args.output_wav)), exist_ok=True
+    )
+    sf.write(args.output_wav, rec, 16000)
+    summary = {
+        "action": "decode",
+        "mode": "parametric",
+        "bitstream_bytes": len(raw_bytes),
+        "output_samples": int(rec.size),
+        "bitrate_kbps": 2.4,
+    }
+    print(json.dumps(summary, indent=2))
+    return
+
+  if not args.input_wav:
+    raise ValueError("--input_wav is required for encode or roundtrip.")
   wav = dataset.load_audio_16k(args.input_wav, max_seconds=3.0)
   n_frames = max(1, wav.size // 160)
   wav = wav[: n_frames * 160]
+
+  if args.action == "encode":
+    if not args.bitstream:
+      raise ValueError("--bitstream (.bin) is required when --action=encode.")
+    if args.mode == "waveform":
+      if args.model_dir and os.path.exists(args.model_dir):
+        codec = inference.WaveNetWaveformCodec.from_pretrained(args.model_dir)
+      else:
+        codec = inference.WaveNetWaveformCodec()
+      res = codec.encode_and_decode(wav, run_arithmetic_coder=True)
+      bs = res["bitstream"]
+    else:
+      if args.model_dir and os.path.exists(args.model_dir):
+        codec = inference.WaveNetParametricCodec.from_pretrained(args.model_dir)
+      else:
+        codec = inference.WaveNetParametricCodec()
+      enc = codec.encode(wav)
+      bs = enc["bitstream"]
+    os.makedirs(
+        os.path.dirname(os.path.abspath(args.bitstream)), exist_ok=True
+    )
+    with open(args.bitstream, "wb") as bf:
+      bf.write(bs)
+    summary = {
+        "action": "encode",
+        "mode": args.mode,
+        "bitstream_path": args.bitstream,
+        "bitstream_bytes": len(bs),
+    }
+    print(json.dumps(summary, indent=2))
+    return
 
   if args.mode == "waveform":
     if args.model_dir and os.path.exists(args.model_dir):
@@ -122,8 +202,19 @@ def main() -> None:
         ),
     }
 
-  os.makedirs(os.path.dirname(os.path.abspath(args.output_wav)), exist_ok=True)
-  sf.write(args.output_wav, rec, 16000)
+  if args.bitstream and "bitstream" in result:
+    os.makedirs(
+        os.path.dirname(os.path.abspath(args.bitstream)), exist_ok=True
+    )
+    with open(args.bitstream, "wb") as bf:
+      bf.write(result["bitstream"])
+    summary["bitstream_bytes"] = len(result["bitstream"])
+
+  if args.output_wav:
+    os.makedirs(
+        os.path.dirname(os.path.abspath(args.output_wav)), exist_ok=True
+    )
+    sf.write(args.output_wav, rec, 16000)
   print(json.dumps(summary, indent=2))
 
 

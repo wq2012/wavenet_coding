@@ -46,10 +46,11 @@ class Codec2AndEntropyTest(unittest.TestCase):
     self.assertEqual(cond.shape, (len(frames) * 160, 16))
     for frame in frames:
       self.assertFalse(hasattr(frame, "wideband_carrier"))
+      self.assertFalse(hasattr(frame, "codec2_packet"))
       self.assertEqual(frame.lsf_hz.shape, (10,))
       self.assertTrue(np.all(np.diff(frame.lsf_hz) > 0))
 
-    # Verify 50-bit block packing/unpacking roundtrip
+    # Verify 50-bit block packing/unpacking roundtrip is bit-exact
     bitstream = coder.encode_bitstream(wav)
     num_blocks = (len(frames) + 1) // 2
     expected_bytes = 4 + (num_blocks * 50 + 7) // 8
@@ -58,11 +59,11 @@ class Codec2AndEntropyTest(unittest.TestCase):
         bitstream
     )
     self.assertEqual(len(unpacked_frames), len(frames))
-    np.testing.assert_allclose(cond, cond_from_bits, atol=1e-5)
+    np.testing.assert_array_equal(cond, cond_from_bits)
     for f_orig, f_unp in zip(frames, unpacked_frames):
-      np.testing.assert_allclose(f_orig.lsf_hz, f_unp.lsf_hz, atol=1e-5)
-      self.assertAlmostEqual(f_orig.f0_hz, f_unp.f0_hz, places=4)
-      self.assertAlmostEqual(f_orig.energy_db, f_unp.energy_db, places=4)
+      np.testing.assert_array_equal(f_orig.lsf_hz, f_unp.lsf_hz)
+      self.assertEqual(f_orig.f0_hz, f_unp.f0_hz)
+      self.assertEqual(f_orig.energy_db, f_unp.energy_db)
       self.assertEqual(f_orig.voiced, f_unp.voiced)
       self.assertEqual(f_orig.voicing_code, f_unp.voicing_code)
 

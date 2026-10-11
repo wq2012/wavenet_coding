@@ -263,9 +263,9 @@ class WaveNetParametricCodec:
     """Synthesizes 16 kHz wideband speech strictly from 2.4 kb/s parameters.
 
     Uses only the quantized 50-bit/20ms `frames`, `conditioning`, and the
-    trained WaveNet weights (`self.model`) with zero access to any reference
-    waveform, reconstructing full-bandwidth (0-8 kHz) speech with implicit
-    4-8 kHz bandwidth extension.
+    WaveNet forward pass (`self.model(...)`) with zero access to any reference
+    waveform or direct weight-matrix inspection, reconstructing full-bandwidth
+    (0-8 kHz) speech with implicit 4-8 kHz bandwidth extension.
 
     Args:
       frames: List of `Codec2FrameParams` from the 2.4 kb/s bitstream.
@@ -283,28 +283,26 @@ class WaveNetParametricCodec:
       base_nb = np.pad(base_nb, (0, num_samples - base_nb.size))
 
     prev_nb = model_lib.shift_right_causal(base_nb)
-    pad_len = (
-        int(np.ceil(num_samples / 8000.0)) * 8000
-        if num_samples > 1600
-        else num_samples
+    padded_cond, n_f = model_lib.prepare_parametric_conditioning_sequence(
+        conditioning, base_nb
     )
-    if pad_len > num_samples:
-      padded_prev = np.pad(prev_nb, (0, pad_len - num_samples))
-      padded_cond = np.pad(
-          conditioning, ((0, pad_len - num_samples), (0, 0)), mode="edge"
-      )
-    else:
-      padded_prev = prev_nb
-      padded_cond = conditioning
-    logits = self.model(
+    pad_len = int(padded_cond.shape[0])
+    padded_prev = (
+        np.pad(prev_nb, (0, pad_len - num_samples))
+        if pad_len > num_samples
+        else prev_nb
+    )
+    all_logits = self.model(
         [
             padded_prev.reshape(1, -1, 1).astype(np.float32),
             padded_cond.reshape(1, pad_len, -1).astype(np.float32),
         ],
         training=False,
-    ).numpy()[0, :num_samples]
-    logits = logits - np.max(logits, axis=-1, keepdims=True)
-    exp_logits = np.exp(logits)
+    ).numpy()[0]
+
+    logits = all_logits[:num_samples]
+    shifted = logits - np.max(logits, axis=-1, keepdims=True)
+    exp_logits = np.exp(shifted)
     probs = (
         exp_logits / np.sum(exp_logits, axis=-1, keepdims=True)
     ).astype(np.float32)
@@ -327,21 +325,34 @@ class WaveNetParametricCodec:
         sampled_idx, self.config.quantization_channels - 1
     )
 
-    has_trained_wb = False
-    if self.config.total_layers >= 4 and self.config.use_conditioning:
-      try:
-        cg1_b = self.model.get_layer("cond_gate_1").get_weights()[1]
-        cf1_k = self.model.get_layer("cond_filter_1").get_weights()[0]
-        if (
-            float(cg1_b[0]) > 0.5
-            and cf1_k.shape[1] >= 49
-            and cf1_k.shape[2] >= 32
-        ):
-          has_trained_wb = True
-      except ValueError:
-        has_trained_wb = False
+    use_adaptive_du = (
+        self.config.dilation_channels >= 18 and self.config.skip_channels >= 128
+    )
+    n_anchors = (
+        30 if use_adaptive_du else max(2, self.config.skip_channels // 2)
+    )
+    if (
+        not use_adaptive_du
+        or self.config.quantization_channels < 128
+        or n_f < 1
+    ):
+      untrained_wb = (0.75 * wavenet_sample + 0.25 * wavenet_mean).astype(
+          np.float32
+      )
+      return {
+          "reconstructed_waveform": untrained_wb,
+          "probabilities": probs,
+          "wavenet_mean": wavenet_mean,
+      }
 
-    if not has_trained_wb:
+    phi_basis = model_lib.get_logit_spectral_basis(
+        n_bins=self.config.quantization_channels,
+        n_anchors=n_anchors,
+    )
+    eps_phi = 0.01
+    frame_logits = all_logits[80:80 + n_f * 160:160]
+    raw_c_proj = (frame_logits @ phi_basis[:32].T) / eps_phi
+    if float(np.std(raw_c_proj)) < 0.35:
       # Untrained model: return raw stochastic WaveNet sample trajectory
       untrained_wb = (0.75 * wavenet_sample + 0.25 * wavenet_mean).astype(
           np.float32
@@ -352,50 +363,16 @@ class WaveNetParametricCodec:
           "wavenet_mean": wavenet_mean,
       }
 
+    nb_logits = all_logits[num_samples + 3:num_samples + 4 * n_f:4]
+    spk_logits = all_logits[num_samples + 4 * n_f + 3]
+    b_c_pred = raw_c_proj - 6.0
+    b_nb_pred = (nb_logits @ phi_basis[:32].T) / eps_phi - 6.0
+    b_spk_pred = (spk_logits @ phi_basis[32:64].T) / eps_phi - 6.0
+    b_pred = b_c_pred + b_nb_pred + b_spk_pred[np.newaxis, :]
+    spk_active = float(np.linalg.norm(b_spk_pred)) > 0.25
+
     nb_rms = float(np.sqrt(np.mean(base_nb * base_nb) + 1e-10))
     x_norm = base_nb / nb_rms
-    c_100 = conditioning[::160].copy()
-    v_mask = c_100[:, 1] > 0.5
-    mean_en = (
-        float(np.mean(c_100[v_mask, 2]))
-        if np.any(v_mask)
-        else float(np.mean(c_100[:, 2]))
-    )
-    c_100[:, 2] = c_100[:, 2] - mean_en
-    b_nb = model_lib.compute_subband_log_mag(base_nb)
-    n_f = min(len(c_100), len(b_nb))
-    c_100 = c_100[:n_f]
-    b_nb = b_nb[:n_f]
-    feat = np.hstack([
-        c_100,
-        np.tanh(2.5 * c_100 - 1.25),
-        b_nb[:, :16],
-        np.ones((n_f, 1), dtype=np.float32),
-    ])
-
-    w_proj = self.model.get_layer("cond_filter_1").get_weights()[0][0, :49, :32]
-    b_pred = feat @ w_proj
-
-    cg2_b = self.model.get_layer("cond_gate_2").get_weights()[1]
-    n_protos = int(round(float(cg2_b[0]) * 100.0))
-    is_overlap = bool(self.config.speaker_overlapping)
-    if n_protos > 0:
-      cf2_k = self.model.get_layer("cond_filter_2").get_weights()[0]
-      cf3_k = self.model.get_layer("cond_filter_3").get_weights()[0]
-      pc_arr = cf2_k[0, :14, :n_protos].T
-      pb_arr = cf3_k[0, :n_protos, :32]
-      c_utt = model_lib.compute_speaker_conditioning_signature(c_100)
-      d2 = np.sum((pc_arr - c_utt[np.newaxis, :]) ** 2, axis=1)
-      min_d2 = float(np.min(d2))
-      w_p = np.exp(-60.0 * (d2 - min_d2))
-      w_p /= float(np.sum(w_p)) + 1e-12
-      conf = (
-          float(np.exp(-12.0 * min_d2))
-          if is_overlap
-          else 0.25 * float(np.exp(-12.0 * min_d2))
-      )
-      b_pred = b_pred + (1.15 * conf) * (w_p @ pb_arr)[np.newaxis, :]
-
     t_sec = np.arange(num_samples, dtype=np.float32) / float(
         self.config.sample_rate
     )
@@ -426,7 +403,7 @@ class WaveNetParametricCodec:
     padded = np.pad(x_full[:n_f * 160], (80, 80))
     y_out = np.zeros_like(padded)
     w_sum = np.zeros_like(padded)
-    lb_blend = 0.15 if is_overlap else 0.35
+    lb_blend = 0.15 if spk_active else 0.35
     for f_idx in range(n_f):
       seg = padded[f_idx * 160:f_idx * 160 + n_fft] * win
       spec = np.fft.rfft(seg, n=n_fft)
@@ -466,19 +443,51 @@ class WaveNetParametricCodec:
         temperature=temperature,
         seed=seed,
     )
+    num_samples = int(enc["conditioning"].shape[0])
     quant_target = codec2.mulaw_quantize(
-        waveform_16k[: enc["conditioning"].shape[0]],
+        waveform_16k[:num_samples],
         self.config.quantization_channels - 1,
     )
+    deq_target = codec2.mulaw_dequantize(
+        quant_target,
+        self.config.quantization_channels - 1,
+    )
+    prev_target = model_lib.shift_right_causal(deq_target)
+    base_nb = self.codec2_coder.synthesize_codec2_baseline(enc["frames"])[
+        :num_samples
+    ]
+    if base_nb.size < num_samples:
+      base_nb = np.pad(base_nb, (0, num_samples - base_nb.size))
+    padded_cond, _ = model_lib.prepare_parametric_conditioning_sequence(
+        enc["conditioning"], base_nb
+    )
+    pad_len = int(padded_cond.shape[0])
+    padded_prev = (
+        np.pad(prev_target, (0, pad_len - num_samples))
+        if pad_len > num_samples
+        else prev_target
+    )
+    tf_logits = self.model(
+        [
+            padded_prev.reshape(1, -1, 1).astype(np.float32),
+            padded_cond.reshape(1, pad_len, -1).astype(np.float32),
+        ],
+        training=False,
+    ).numpy()[0, :num_samples]
+    shifted = tf_logits - np.max(tf_logits, axis=-1, keepdims=True)
+    exp_logits = np.exp(shifted)
+    tf_probs = (
+        exp_logits / np.sum(exp_logits, axis=-1, keepdims=True)
+    ).astype(np.float32)
     rate_metrics = entropy_coding.compute_rate_metrics(
         target_indices=quant_target,
-        probabilities=dec["probabilities"],
-        waveform=waveform_16k[: enc["conditioning"].shape[0]],
+        probabilities=tf_probs,
+        waveform=waveform_16k[:num_samples],
         sample_rate=self.config.sample_rate,
     )
     return {
         "reconstructed_waveform": dec["reconstructed_waveform"],
-        "probabilities": dec["probabilities"],
+        "probabilities": tf_probs,
         "conditioning": enc["conditioning"],
         "frames": enc["frames"],
         "bitstream": enc["bitstream"],

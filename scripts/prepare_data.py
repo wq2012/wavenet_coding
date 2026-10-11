@@ -30,6 +30,8 @@ def parse_args() -> argparse.Namespace:
   )
   parser.add_argument(
       "--data_dir",
+      "--dataset_dir",
+      dest="data_dir",
       type=str,
       default="",
       help="Root directory of LibriSpeech, VCTK, or audio files.",
@@ -43,7 +45,7 @@ def parse_args() -> argparse.Namespace:
   parser.add_argument(
       "--max_speakers",
       type=int,
-      default=24,
+      default=28,
       help="Maximum number of speakers to include.",
   )
   parser.add_argument(
@@ -51,6 +53,18 @@ def parse_args() -> argparse.Namespace:
       type=int,
       default=10,
       help="Maximum utterances per speaker.",
+  )
+  parser.add_argument(
+      "--num_eval_speakers",
+      type=int,
+      default=8,
+      help="Number of speakers assigned to the evaluation set.",
+  )
+  parser.add_argument(
+      "--eval_utterances_per_speaker",
+      type=int,
+      default=2,
+      help="Number of held-out test utterances per evaluation speaker.",
   )
   parser.add_argument(
       "--synthetic",
@@ -89,7 +103,11 @@ def main() -> None:
         max_utterances_per_speaker=args.max_utterances_per_speaker,
     )
 
-  splits = dataset.build_coding_splits(speaker_map)
+  splits = dataset.build_coding_splits(
+      speaker_map,
+      num_eval_speakers=args.num_eval_speakers,
+      eval_utterances_per_speaker=args.eval_utterances_per_speaker,
+  )
   manifest = {
       "num_speakers": len(speaker_map),
       "speakers": sorted(speaker_map.keys()),

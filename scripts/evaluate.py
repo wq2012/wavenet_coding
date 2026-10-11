@@ -213,13 +213,32 @@ def _save_codec_comparison_plot(
   plt.close(fig)
 
 
+def _round_robin_eval_pairs(
+    pairs: List[Any],
+    max_count: int,
+) -> List[Any]:
+  """Selects up to max_count pairs balanced across speakers."""
+  by_spk: Dict[str, List[str]] = {}
+  for spk, path in pairs:
+    by_spk.setdefault(str(spk), []).append(path)
+  ordered: List[Any] = []
+  max_len = max((len(v) for v in by_spk.values()), default=0)
+  for r in range(max_len):
+    for spk, paths in by_spk.items():
+      if r < len(paths):
+        ordered.append((spk, paths[r]))
+  return ordered[:max_count]
+
+
 def main() -> None:
   """Main entry point for evaluation."""
   args = parse_args()
   with open(args.manifest, "r", encoding="utf-8") as f:
     manifest = json.load(f)
 
-  eval_pairs = manifest["splits"]["eval_set"][: args.max_eval_utterances]
+  eval_pairs = _round_robin_eval_pairs(
+      manifest["splits"]["eval_set"], args.max_eval_utterances
+  )
   ww_codec = _load_or_default_waveform_codec(args.models_dir)
   w_wo_codec = _load_or_default_parametric_codec(
       args.models_dir,
@@ -267,6 +286,18 @@ def main() -> None:
     # 1. Closed-loop WaveNet Waveform Coder (WW)
     ww_out = ww_codec.encode_and_decode(wav, run_arithmetic_coder=True)
     rm = ww_out["rate_metrics"]
+    if first_wav is None:
+      first_wav = wav
+      first_entropy = ww_out["instantaneous_entropy_bits"]
+
+    # 2. Parametric WaveNet Coders (W_wo and W_w) + Hybrid Mode-Switching
+    w_wo_out = w_wo_codec.encode_and_decode(wav, seed=42 + idx)
+    w_w_out = w_w_codec.encode_and_decode(wav, seed=42 + idx)
+    hybrid_out = hybrid_codec.encode_and_decode(
+        wav, seed=42 + idx, ww_out=ww_out, wp_out=w_w_out
+    )
+    rm_wo = w_wo_out["conditional_rate_metrics"]
+    rm_w = w_w_out["conditional_rate_metrics"]
     rate_records.append(
         {
             "mean_entropy_bits_per_sample": rm["mean_entropy_bits_per_sample"],
@@ -278,6 +309,14 @@ def main() -> None:
                 rm["cross_entropy_bits_per_sample"] * np.log(2.0)
             ),
             "cross_entropy_rate_kbps": rm["cross_entropy_rate_kbps"],
+            "w_wo_cross_entropy_bits_per_sample": rm_wo[
+                "cross_entropy_bits_per_sample"
+            ],
+            "w_wo_cross_entropy_rate_kbps": rm_wo["cross_entropy_rate_kbps"],
+            "w_w_cross_entropy_bits_per_sample": rm_w[
+                "cross_entropy_bits_per_sample"
+            ],
+            "w_w_cross_entropy_rate_kbps": rm_w["cross_entropy_rate_kbps"],
             "arithmetic_coded_bits_per_sample": float(
                 ww_out["arithmetic_kbps_active"] / 16.0
             ),
@@ -289,16 +328,6 @@ def main() -> None:
                 ww_out.get("lossless_exact_match", True)
             ),
         }
-    )
-    if first_wav is None:
-      first_wav = wav
-      first_entropy = ww_out["instantaneous_entropy_bits"]
-
-    # 2. Parametric WaveNet Coders (W_wo and W_w) + Hybrid Mode-Switching
-    w_wo_out = w_wo_codec.encode_and_decode(wav, seed=42 + idx)
-    w_w_out = w_w_codec.encode_and_decode(wav, seed=42 + idx)
-    hybrid_out = hybrid_codec.encode_and_decode(
-        wav, seed=42 + idx, ww_out=ww_out, wp_out=w_w_out
     )
 
     # 3. Reference Baseline Codecs
@@ -362,28 +391,28 @@ def main() -> None:
           }
       )
 
-    # 4. Speaker verification features (Section 3.4)
+    # 4. Speaker verification features (Section 3.4, 120 frames)
     mulaw_feats.append(
-        dataset.extract_log_mel_features(mulaw_wav, max_frames=80)
+        dataset.extract_log_mel_features(mulaw_wav, max_frames=120)
     )
     w_wo_feats.append(
         dataset.extract_log_mel_features(
-            w_wo_out["reconstructed_waveform"], max_frames=80
+            w_wo_out["reconstructed_waveform"], max_frames=120
         )
     )
     w_w_feats.append(
         dataset.extract_log_mel_features(
-            w_w_out["reconstructed_waveform"], max_frames=80
+            w_w_out["reconstructed_waveform"], max_frames=120
         )
     )
-    c2_feats.append(dataset.extract_log_mel_features(c2_wav, max_frames=80))
+    c2_feats.append(dataset.extract_log_mel_features(c2_wav, max_frames=120))
     melp_feats.append(
-        dataset.extract_log_mel_features(melp_wav, max_frames=80)
+        dataset.extract_log_mel_features(melp_wav, max_frames=120)
     )
     speex_feats.append(
-        dataset.extract_log_mel_features(speex_wav, max_frames=80)
+        dataset.extract_log_mel_features(speex_wav, max_frames=120)
     )
-    amr_feats.append(dataset.extract_log_mel_features(amr_wav, max_frames=80))
+    amr_feats.append(dataset.extract_log_mel_features(amr_wav, max_frames=120))
     speaker_ids.append(spk_id)
 
   # Aggregate waveform coding rates
@@ -420,6 +449,40 @@ def main() -> None:
       ),
       "cross_entropy_rate_kbps": round(
           float(np.mean([r["cross_entropy_rate_kbps"] for r in rate_records])),
+          2,
+      ),
+      "wavenet_parametric_w_wo_cross_entropy_bits_per_sample": round(
+          float(
+              np.mean(
+                  [
+                      r["w_wo_cross_entropy_bits_per_sample"]
+                      for r in rate_records
+                  ]
+              )
+          ),
+          4,
+      ),
+      "wavenet_parametric_w_wo_cross_entropy_rate_kbps": round(
+          float(
+              np.mean([r["w_wo_cross_entropy_rate_kbps"] for r in rate_records])
+          ),
+          2,
+      ),
+      "wavenet_parametric_w_w_cross_entropy_bits_per_sample": round(
+          float(
+              np.mean(
+                  [
+                      r["w_w_cross_entropy_bits_per_sample"]
+                      for r in rate_records
+                  ]
+              )
+          ),
+          4,
+      ),
+      "wavenet_parametric_w_w_cross_entropy_rate_kbps": round(
+          float(
+              np.mean([r["w_w_cross_entropy_rate_kbps"] for r in rate_records])
+          ),
           2,
       ),
       "arithmetic_coded_bits_per_sample": round(

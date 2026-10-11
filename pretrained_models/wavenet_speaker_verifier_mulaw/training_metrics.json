@@ -2,61 +2,74 @@
   "task": "speaker_verifier",
   "domain": "mulaw",
   "num_speakers": 40,
-  "training_time_sec": 135.46,
-  "initial_ge2e_loss": 2.8332,
-  "final_ge2e_loss": 0.3225,
-  "initial_eer_percent": 33.486,
-  "final_eer_percent": 5.813,
+  "num_eval_utterances": 16,
+  "training_audio_duration_sec": 347.84,
+  "training_time_sec": 204.14,
+  "initial_ge2e_loss": 3.2845,
+  "final_ge2e_loss": 0.1715,
+  "initial_eer_percent": 35.268,
+  "final_train_eer_percent": 5.296,
+  "final_eer_percent": 2.679,
   "history": [
     {
       "epoch": 1,
-      "ge2e_loss": 2.5943,
-      "eer_percent": 33.662
+      "ge2e_loss": 0.9159,
+      "train_eer_percent": 15.469,
+      "eer_percent": 12.5
     },
     {
       "epoch": 2,
-      "ge2e_loss": 2.4239,
-      "eer_percent": 32.636
+      "ge2e_loss": 0.4198,
+      "train_eer_percent": 8.325,
+      "eer_percent": 9.375
     },
     {
       "epoch": 3,
-      "ge2e_loss": 2.0699,
-      "eer_percent": 29.227
+      "ge2e_loss": 0.2345,
+      "train_eer_percent": 5.825,
+      "eer_percent": 3.125
     },
     {
       "epoch": 4,
-      "ge2e_loss": 1.8972,
-      "eer_percent": 26.575
+      "ge2e_loss": 0.1953,
+      "train_eer_percent": 5.321,
+      "eer_percent": 3.125
     },
     {
       "epoch": 5,
-      "ge2e_loss": 1.8211,
-      "eer_percent": 25.168
+      "ge2e_loss": 0.2155,
+      "train_eer_percent": 5.04,
+      "eer_percent": 3.125
     },
     {
       "epoch": 6,
-      "ge2e_loss": 1.7537,
-      "eer_percent": 24.888
+      "ge2e_loss": 0.1859,
+      "train_eer_percent": 5.112,
+      "eer_percent": 3.125
     },
     {
       "epoch": 7,
-      "ge2e_loss": 1.5722,
-      "eer_percent": 24.215
+      "ge2e_loss": 0.2142,
+      "train_eer_percent": 5.1,
+      "eer_percent": 2.679
     },
     {
       "epoch": 8,
-      "ge2e_loss": 1.5255,
-      "eer_percent": 22.472
+      "ge2e_loss": 0.1726,
+      "train_eer_percent": 5.092,
+      "eer_percent": 2.679
     },
     {
       "epoch": 9,
-      "ge2e_loss": 1.1675,
-      "eer_percent": 19.283
+      "ge2e_loss": 0.1753,
+      "train_eer_percent": 5.12,
+      "eer_percent": 2.679
     },
     {
       "epoch": 10,
-      "ge2e_loss": 0.3225,
-      "eer_percent": 5.813
+      "ge2e_loss": 0.1715,
+      "train_eer_percent": 5.296,
+      "eer_percent": 2.679
     }
   ],
   "exported_files": {
@@ -65,10 +78,10 @@
     "saved_model_dir": "pretrained_models/wavenet_speaker_verifier_mulaw/saved_model",
     "tflite": {
       "fp32_path": "pretrained_models/wavenet_speaker_verifier_mulaw/model_fp32.tflite",
-      "fp32_size_bytes": 895288,
+      "fp32_size_bytes": 1157512,
       "fp32_verified": true,
       "int8_path": "pretrained_models/wavenet_speaker_verifier_mulaw/model_int8.tflite",
-      "int8_size_bytes": 487072,
+      "int8_size_bytes": 558856,
       "int8_verified": true,
       "output_shape": [
         1,
