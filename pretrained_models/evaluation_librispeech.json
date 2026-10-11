@@ -1,124 +1,217 @@
 {
   "num_eval_utterances": 16,
   "section_3_2_waveform_coding_rates": {
-    "mean_entropy_bits_per_sample": 5.7415,
-    "mean_entropy_kbps": 91.86,
-    "cross_entropy_bits_per_sample": 5.9333,
-    "cross_entropy_rate_kbps": 94.93,
+    "mean_entropy_bits_per_sample": 4.8556,
+    "mean_entropy_kbps": 77.69,
+    "cross_entropy_bits_per_sample": 5.257,
+    "cross_entropy_nll_nats_per_sample": 3.6438,
+    "cross_entropy_rate_kbps": 84.11,
+    "arithmetic_coded_bits_per_sample": 5.0156,
+    "arithmetic_coded_rate_kbps": 80.25,
     "lossless_exact_match_rate": 1.0
   },
   "section_3_3_codec_comparison": {
     "Reference (16 kHz)": {
       "bitrate_kbps": 256.0,
-      "objective_mos_lqo": 4.85,
+      "pesq_wb_mos_lqo": 4.644,
+      "stoi": 1.0,
+      "f0_rmse_hz": 0.0,
+      "objective_mos_lqo": 4.644,
       "mcd_db": 0.0,
       "lsd_db": 0.0,
       "segmental_snr_db": 45.0,
-      "high_band_energy_ratio_percent": 3.641
+      "high_band_energy_ratio_percent": 4.062
     },
     "8-bit mu-law (128 kb/s)": {
       "bitrate_kbps": 128.0,
-      "objective_mos_lqo": 4.738,
-      "mcd_db": 0.305,
-      "lsd_db": 0.641,
-      "segmental_snr_db": 37.484,
-      "high_band_energy_ratio_percent": 3.65
+      "pesq_wb_mos_lqo": 4.171,
+      "stoi": 0.999,
+      "f0_rmse_hz": 0.184,
+      "objective_mos_lqo": 4.171,
+      "mcd_db": 0.427,
+      "lsd_db": 0.827,
+      "segmental_snr_db": 35.42,
+      "high_band_energy_ratio_percent": 4.072
     },
     "WaveNet Waveform (WW)": {
-      "bitrate_kbps": 94.932,
-      "objective_mos_lqo": 4.738,
-      "mcd_db": 0.305,
-      "lsd_db": 0.641,
-      "segmental_snr_db": 37.484,
-      "high_band_energy_ratio_percent": 3.65
+      "bitrate_kbps": 84.111,
+      "pesq_wb_mos_lqo": 4.171,
+      "stoi": 0.999,
+      "f0_rmse_hz": 0.184,
+      "objective_mos_lqo": 4.171,
+      "mcd_db": 0.427,
+      "lsd_db": 0.827,
+      "segmental_snr_db": 35.42,
+      "high_band_energy_ratio_percent": 4.072
     },
-    "AMR-WB (23.85 kb/s)": {
-      "bitrate_kbps": 23.85,
-      "objective_mos_lqo": 3.449,
-      "mcd_db": 3.197,
-      "lsd_db": 5.307,
-      "segmental_snr_db": 8.9,
-      "high_band_energy_ratio_percent": 3.397
+    "Hybrid Mode-Switching (WW + W_w)": {
+      "bitrate_kbps": 50.09,
+      "pesq_wb_mos_lqo": 1.871,
+      "stoi": 0.936,
+      "f0_rmse_hz": 17.721,
+      "objective_mos_lqo": 1.871,
+      "mcd_db": 2.586,
+      "lsd_db": 3.036,
+      "segmental_snr_db": 21.533,
+      "high_band_energy_ratio_percent": 3.88
+    },
+    "AMR-WB (23.05 kb/s)": {
+      "bitrate_kbps": 23.05,
+      "pesq_wb_mos_lqo": 3.964,
+      "stoi": 0.984,
+      "f0_rmse_hz": 8.114,
+      "objective_mos_lqo": 3.964,
+      "mcd_db": 1.491,
+      "lsd_db": 3.131,
+      "segmental_snr_db": 6.049,
+      "high_band_energy_ratio_percent": 2.165
     },
     "WaveNet Parametric (W_w, 2.4 kb/s)": {
       "bitrate_kbps": 2.4,
-      "objective_mos_lqo": 3.245,
-      "mcd_db": 3.42,
-      "lsd_db": 3.565,
-      "segmental_snr_db": 3.716,
-      "high_band_energy_ratio_percent": 3.671
+      "pesq_wb_mos_lqo": 1.528,
+      "stoi": 0.85,
+      "f0_rmse_hz": 25.42,
+      "objective_mos_lqo": 1.528,
+      "mcd_db": 5.26,
+      "lsd_db": 5.557,
+      "segmental_snr_db": -2.306,
+      "high_band_energy_ratio_percent": 0.706
     },
     "WaveNet Parametric (W_wo, 2.4 kb/s)": {
       "bitrate_kbps": 2.4,
-      "objective_mos_lqo": 2.23,
-      "mcd_db": 7.505,
-      "lsd_db": 7.905,
-      "segmental_snr_db": 1.537,
-      "high_band_energy_ratio_percent": 1.643
+      "pesq_wb_mos_lqo": 1.513,
+      "stoi": 0.85,
+      "f0_rmse_hz": 24.588,
+      "objective_mos_lqo": 1.513,
+      "mcd_db": 5.611,
+      "lsd_db": 5.732,
+      "segmental_snr_db": -2.297,
+      "high_band_energy_ratio_percent": 0.614
     },
     "MELP (2.4 kb/s)": {
       "bitrate_kbps": 2.4,
-      "objective_mos_lqo": 1.627,
-      "mcd_db": 8.412,
-      "lsd_db": 8.77,
-      "segmental_snr_db": -2.744,
-      "high_band_energy_ratio_percent": 0.041
+      "pesq_wb_mos_lqo": 1.686,
+      "stoi": 0.778,
+      "f0_rmse_hz": 40.092,
+      "objective_mos_lqo": 1.686,
+      "mcd_db": 8.111,
+      "lsd_db": 7.895,
+      "segmental_snr_db": -2.822,
+      "high_band_energy_ratio_percent": 0.02
     },
     "Codec 2 (2.4 kb/s)": {
       "bitrate_kbps": 2.4,
-      "objective_mos_lqo": 1.646,
-      "mcd_db": 8.277,
-      "lsd_db": 8.172,
-      "segmental_snr_db": -2.491,
-      "high_band_energy_ratio_percent": 0.023
+      "pesq_wb_mos_lqo": 1.597,
+      "stoi": 0.847,
+      "f0_rmse_hz": 36.549,
+      "objective_mos_lqo": 1.597,
+      "mcd_db": 8.45,
+      "lsd_db": 8.067,
+      "segmental_snr_db": -2.32,
+      "high_band_energy_ratio_percent": 0.005
     },
     "Speex (2.15 kb/s)": {
       "bitrate_kbps": 2.15,
-      "objective_mos_lqo": 1.893,
-      "mcd_db": 7.459,
-      "lsd_db": 8.219,
-      "segmental_snr_db": 0.426,
-      "high_band_energy_ratio_percent": 0.069
+      "pesq_wb_mos_lqo": 1.472,
+      "stoi": 0.789,
+      "f0_rmse_hz": 31.137,
+      "objective_mos_lqo": 1.472,
+      "mcd_db": 7.944,
+      "lsd_db": 7.807,
+      "segmental_snr_db": -1.38,
+      "high_band_energy_ratio_percent": 0.023
     }
   },
   "section_3_4_speaker_identification": {
     "mulaw_speech_eer": {
-      "eer_percent": 12.053571428571429,
-      "eer_ci95_low_percent": 2.2209821428571432,
-      "eer_ci95_high_percent": 19.642857142857142,
-      "ci_95_low_percent": 2.2209821428571432,
-      "ci_95_high_percent": 19.642857142857142,
-      "threshold": 0.38931805399917674,
-      "mean_genuine_cosine": 0.5900887784230047,
-      "mean_impostor_cosine": 0.06415446283955947
-    },
-    "wavenet_parametric_w_wo_eer": {
-      "eer_percent": 25.0,
-      "eer_ci95_low_percent": 9.754464285714286,
-      "eer_ci95_high_percent": 37.957589285714285,
-      "ci_95_low_percent": 9.754464285714286,
-      "ci_95_high_percent": 37.957589285714285,
-      "threshold": 0.8321953156106268,
-      "mean_genuine_cosine": 0.8887528008846554,
-      "mean_impostor_cosine": 0.7299079903992016
+      "eer_percent": 12.5,
+      "eer_ci95_low_percent": 2.6674107142857144,
+      "eer_ci95_high_percent": 21.886160714285715,
+      "ci_95_low_percent": 2.6674107142857144,
+      "ci_95_high_percent": 21.886160714285715,
+      "threshold": 0.29185709569381924,
+      "mean_genuine_cosine": 0.44530730656223655,
+      "mean_impostor_cosine": -0.031165612260486617
     },
     "wavenet_parametric_w_w_eer": {
       "eer_percent": 25.0,
-      "eer_ci95_low_percent": 5.357142857142857,
-      "eer_ci95_high_percent": 50.0,
-      "ci_95_low_percent": 5.357142857142857,
-      "ci_95_high_percent": 50.0,
-      "threshold": 0.47203084832451203,
-      "mean_genuine_cosine": 0.616406649899784,
-      "mean_impostor_cosine": 0.22985314070694823
+      "eer_ci95_low_percent": 13.392857142857142,
+      "eer_ci95_high_percent": 38.404017857142854,
+      "ci_95_low_percent": 13.392857142857142,
+      "ci_95_high_percent": 38.404017857142854,
+      "threshold": 0.3927898672726676,
+      "mean_genuine_cosine": 0.49871190258880344,
+      "mean_impostor_cosine": 0.19032626539991265
+    },
+    "wavenet_parametric_w_wo_eer_mulaw_verifier": {
+      "eer_percent": 25.0,
+      "eer_ci95_low_percent": 12.94642857142857,
+      "eer_ci95_high_percent": 41.51785714285714,
+      "ci_95_low_percent": 12.94642857142857,
+      "ci_95_high_percent": 41.51785714285714,
+      "threshold": 0.49189550553056544,
+      "mean_genuine_cosine": 0.5446005744263802,
+      "mean_impostor_cosine": 0.23289187596733665
+    },
+    "wavenet_parametric_w_wo_eer": {
+      "eer_percent": 22.32142857142857,
+      "eer_ci95_low_percent": 8.482142857142858,
+      "eer_ci95_high_percent": 32.611607142857146,
+      "ci_95_low_percent": 8.482142857142858,
+      "ci_95_high_percent": 32.611607142857146,
+      "threshold": 0.21622103255006364,
+      "mean_genuine_cosine": 0.37797472937253285,
+      "mean_impostor_cosine": -0.03277759994961506
+    },
+    "codec2_2400_eer": {
+      "eer_percent": 27.23214285714286,
+      "eer_ci95_low_percent": 17.39955357142857,
+      "eer_ci95_high_percent": 46.886160714285715,
+      "ci_95_low_percent": 17.39955357142857,
+      "ci_95_high_percent": 46.886160714285715,
+      "threshold": 0.6951031882653882,
+      "mean_genuine_cosine": 0.7511831514622034,
+      "mean_impostor_cosine": 0.5752668362534713
+    },
+    "melp_2400_eer": {
+      "eer_percent": 25.44642857142857,
+      "eer_ci95_low_percent": 13.816964285714286,
+      "eer_ci95_high_percent": 46.875,
+      "ci_95_low_percent": 13.816964285714286,
+      "ci_95_high_percent": 46.875,
+      "threshold": 0.6622801368095736,
+      "mean_genuine_cosine": 0.7499099000126639,
+      "mean_impostor_cosine": 0.49901395755586514
+    },
+    "speex_2150_eer": {
+      "eer_percent": 33.48214285714286,
+      "eer_ci95_low_percent": 15.613839285714286,
+      "eer_ci95_high_percent": 41.07142857142857,
+      "ci_95_low_percent": 15.613839285714286,
+      "ci_95_high_percent": 41.07142857142857,
+      "threshold": 0.654569947588562,
+      "mean_genuine_cosine": 0.7099157823552019,
+      "mean_impostor_cosine": 0.5312576204882272
+    },
+    "amr_wb_23050_eer": {
+      "eer_percent": 13.392857142857142,
+      "eer_ci95_low_percent": 3.560267857142857,
+      "eer_ci95_high_percent": 23.22544642857143,
+      "ci_95_low_percent": 3.560267857142857,
+      "ci_95_high_percent": 23.22544642857143,
+      "threshold": 0.33419504474263173,
+      "mean_genuine_cosine": 0.5394971779051225,
+      "mean_impostor_cosine": 0.0811744304899468
     },
     "triangle_test_w_w_vs_w_wo": {
-      "mean_cosine_orig_vs_w_wo": 0.48838181445399975,
-      "mean_cosine_orig_vs_w_w": 0.8089489559047142,
-      "mean_cosine_w_wo_vs_w_w": 0.7808174503733418,
-      "mean_cosine_advantage": 0.3205671414507144,
-      "triangle_test_identification_percent": 43.24508910582853,
-      "triangle_accuracy_percent": 43.24508910582853,
+      "mean_cosine_orig_vs_w_wo": 0.5684091566528269,
+      "mean_cosine_orig_vs_w_w": 0.5917583187780218,
+      "mean_cosine_w_wo_vs_w_w": 0.3938628149217174,
+      "mean_cosine_advantage": 0.02334916212519502,
+      "triangle_test_identification_percent": 50.0,
+      "triangle_accuracy_percent": 50.0,
+      "abx_preference_percent": 68.75,
+      "abx_preference_w_w_over_w_wo_percent": 68.75,
       "random_chance_baseline_percent": 33.33
     }
   }

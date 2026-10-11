@@ -2,51 +2,74 @@
   "task": "wavenet",
   "mode": "waveform",
   "speaker_overlapping": false,
-  "num_train_windows": 48,
+  "num_train_utterances": 160,
+  "num_train_windows": 64,
   "num_eval_windows": 16,
-  "training_time_sec": 187.79,
-  "initial_eval_bits_per_sample": 5.497945785522461,
-  "final_eval_bits_per_sample": 5.241023063659668,
+  "training_time_sec": 14.85,
+  "initial_eval_bits_per_sample": 7.0186,
+  "initial_eval_nll_nats_per_sample": 4.8649,
+  "final_eval_bits_per_sample": 4.0603,
+  "final_eval_nll_nats_per_sample": 2.8144,
   "history": [
     {
       "epoch": 1,
-      "train_loss_bits_per_sample": 6.706890265146892,
-      "eval_cross_entropy_bits_per_sample": 5.695452690124512
+      "train_loss_bits_per_sample": 6.892,
+      "eval_cross_entropy_bits_per_sample": 6.7692,
+      "eval_nll_nats_per_sample": 4.6921
     },
     {
       "epoch": 2,
-      "train_loss_bits_per_sample": 6.386214256286621,
-      "eval_cross_entropy_bits_per_sample": 5.431291580200195
+      "train_loss_bits_per_sample": 6.6984,
+      "eval_cross_entropy_bits_per_sample": 6.5453,
+      "eval_nll_nats_per_sample": 4.5368
     },
     {
       "epoch": 3,
-      "train_loss_bits_per_sample": 6.12939437230428,
-      "eval_cross_entropy_bits_per_sample": 5.330618858337402
+      "train_loss_bits_per_sample": 6.5196,
+      "eval_cross_entropy_bits_per_sample": 6.3332,
+      "eval_nll_nats_per_sample": 4.3898
     },
     {
       "epoch": 4,
-      "train_loss_bits_per_sample": 5.888708432515462,
-      "eval_cross_entropy_bits_per_sample": 5.3388352394104
+      "train_loss_bits_per_sample": 6.3548,
+      "eval_cross_entropy_bits_per_sample": 6.131,
+      "eval_nll_nats_per_sample": 4.2497
     },
     {
       "epoch": 5,
-      "train_loss_bits_per_sample": 5.701914151509603,
-      "eval_cross_entropy_bits_per_sample": 5.285624980926514
+      "train_loss_bits_per_sample": 6.2047,
+      "eval_cross_entropy_bits_per_sample": 5.9357,
+      "eval_nll_nats_per_sample": 4.1143
     },
     {
       "epoch": 6,
-      "train_loss_bits_per_sample": 5.6265692710876465,
-      "eval_cross_entropy_bits_per_sample": 5.294033050537109
+      "train_loss_bits_per_sample": 6.0753,
+      "eval_cross_entropy_bits_per_sample": 5.7441,
+      "eval_nll_nats_per_sample": 3.9815
     },
     {
       "epoch": 7,
-      "train_loss_bits_per_sample": 5.596172014872233,
-      "eval_cross_entropy_bits_per_sample": 5.288949012756348
+      "train_loss_bits_per_sample": 5.9746,
+      "eval_cross_entropy_bits_per_sample": 5.5418,
+      "eval_nll_nats_per_sample": 3.8413
     },
     {
       "epoch": 8,
-      "train_loss_bits_per_sample": 5.530875523885091,
-      "eval_cross_entropy_bits_per_sample": 5.241023063659668
+      "train_loss_bits_per_sample": 5.8965,
+      "eval_cross_entropy_bits_per_sample": 5.2868,
+      "eval_nll_nats_per_sample": 3.6645
+    },
+    {
+      "epoch": 9,
+      "train_loss_bits_per_sample": 5.6948,
+      "eval_cross_entropy_bits_per_sample": 4.7803,
+      "eval_nll_nats_per_sample": 3.3135
+    },
+    {
+      "epoch": 10,
+      "train_loss_bits_per_sample": 5.4515,
+      "eval_cross_entropy_bits_per_sample": 4.0603,
+      "eval_nll_nats_per_sample": 2.8144
     }
   ],
   "exported_files": {
@@ -55,10 +78,10 @@
     "saved_model_dir": "pretrained_models/wavenet_waveform_coder/saved_model",
     "tflite": {
       "fp32_path": "pretrained_models/wavenet_waveform_coder/model_fp32.tflite",
-      "fp32_size_bytes": 2697196,
+      "fp32_size_bytes": 685348,
       "fp32_verified": true,
       "int8_path": "pretrained_models/wavenet_waveform_coder/model_int8.tflite",
-      "int8_size_bytes": 924192,
+      "int8_size_bytes": 181248,
       "int8_verified": true,
       "output_shape": [
         1,

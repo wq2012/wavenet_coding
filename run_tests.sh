@@ -13,7 +13,7 @@ pushd "${PROJECT_PATH}"
 
 # Execute all unit tests with coverage tracking.
 rm -f .coverage
-for TEST_FILE in $(find tests -name "*_test.py" | sort); do
+for TEST_FILE in tests/*_test.py; do
   echo "Running tests in ${TEST_FILE}"
   python3 -m coverage run --source=wavenet_coding -a "${TEST_FILE}"
 done

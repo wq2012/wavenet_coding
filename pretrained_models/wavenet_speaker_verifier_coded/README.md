@@ -5,11 +5,11 @@ license: apache-2.0
 library_name: tensorflow
 tags:
 - audio
-- speech-coding
-- neural-audio-codec
+- speaker-verification
+- lstmp
+- ge2e
 - wavenet
 - codec2
-- speaker-verification
 - icassp2018
 - safetensors
 - gguf
@@ -19,7 +19,7 @@ datasets:
 - vctk
 ---
 
-# GE2E Text-Independent Speaker Verifier — 2.4 kb/s Coded Speech (ICASSP 2018 Section 3.4)
+# GE2E Speaker Verifier on 2.4 kb/s Coded Speech (`V_coded`, ICASSP 2018)
 
 **This is not an officially supported Google product.**
 
@@ -31,98 +31,57 @@ datasets:
 
 ## Model Summary
 
-3-layer Projected-LSTM speaker verification network trained with Generalized End-to-End (GE2E) softmax loss on 2.4 kb/s Codec 2 conditioned speech (Section 3.4).
+3-layer Projected-LSTM (`LSTMP`) text-independent speaker verification model (`128` LSTM units projected to `64` dimensions per layer over `40`-channel frame-level log-Mel filterbank features, followed by L2 normalization of the final recurrent frame state) trained with Generalized End-to-End (`GE2E`) softmax loss on 2.4 kb/s Parametric WaveNet coded speech (Section 3.4 of Kleijn et al., ICASSP 2018).
 
 ### Exported Artifacts Included in This Repository
 
 1. `model.safetensors`: Hugging Face SafeTensors FP32 weights.
-2. `config.json`: Complete model architecture and hyperparameter specification.
+2. `config.json`: Complete model architecture specification (`num_lstm_layers=3`, `lstm_units=128`, `projection_dim=64`, `n_mels=40`).
 3. `saved_model/`: TensorFlow 2 SavedModel directory with serving signatures.
-4. `model_fp32.tflite` & `model_int8.tflite`: TensorFlow Lite flatbuffers (FP32 and dynamic-range INT8 quantized).
-5. `model_f16.gguf` & `model_q4_k_m.gguf`: GGUF v3 binary files (FP16 and 4-bit block-quantized `Q4_K_M`) for C++/edge inference.
+4. `model_fp32.tflite` (`895,288` bytes) & `model_int8.tflite` (`487,072` bytes): Verified TensorFlow Lite flatbuffers.
+5. `model_f16.gguf` & `model_q4_k_m.gguf`: Verified GGUF v3 binary files (`15` tensors) for C++/edge inference.
 6. `training_metrics.json` & `evaluation_metrics.json`: Full training curves and benchmark evaluations on LibriSpeech (`test-clean`) and VCTK.
 
-## Training Progression
+## Training Progression (`training_metrics.json`)
 
-- **Initial GE2E Loss**: `2.3220`
-- **Final GE2E Loss**: `1.5245`
-- **Speakers**: `48` (`44.33 s`)
+- **Training Corpus**: `32` speaker-disjoint training speakers (`160` utterances coded at 2.4 kb/s) from LibriSpeech `test-clean` + CSTR VCTK; evaluated on `16` held-out speakers (`40` utterances)
+- **Wall-Clock Training Time**: `137.46 s` (`10` epochs)
+- **Initial GE2E Loss / Held-Out EER**: `2.6741` (`36.414%` EER)
+- **Final GE2E Loss / Held-Out EER**: **`0.6311`** (**`11.591%` EER**)
 
-## Evaluation Results
+## Evaluation Results — Speaker Verification on 2.4 kb/s Coded Speech (Section 3.4)
 
-### 1. Closed-Loop Waveform Coding Rate & Entropy (Section 3.2)
-
-| Dataset | Mean Conditional Entropy H̄ (bits/sample) | Mean Entropy Rate (kb/s) | Cross-Entropy Rate R (bits/sample) | Cross-Entropy Bitrate (kb/s) | Arithmetic Coder Lossless Match Rate |
-| :--- | :---: | :---: | :---: | :---: | :---: |
-| **LibriSpeech (`test-clean`)** | 5.7415 | 91.86 | 5.9333 | 94.93 | 100.0% |
-| **VCTK Corpus** | 5.7457 | 91.93 | 5.8275 | 93.24 | 100.0% |
-
-### 2. Parametric 2.4 kb/s & Reference Codec Comparison — LibriSpeech (`test-clean`)
-
-| System / Codec | Bitrate (kb/s) | Objective Wideband MOS-LQO (1–5) | MCD (dB) ↓ | LSD (dB) ↓ | SegSNR (dB) ↑ | High-Band (4–8 kHz) Energy (%) |
-| :--- | :---: | :---: | :---: | :---: | :---: | :---: |
-| **Reference (16 kHz)** | 256.00 | 4.850 | 0.000 | 0.000 | 45.000 | 3.641% |
-| **8-bit mu-law (128 kb/s)** | 128.00 | 4.738 | 0.305 | 0.641 | 37.484 | 3.650% |
-| **WaveNet Waveform (WW)** | 94.93 | 4.738 | 0.305 | 0.641 | 37.484 | 3.650% |
-| **AMR-WB (23.85 kb/s)** | 23.85 | 3.449 | 3.197 | 5.307 | 8.900 | 3.397% |
-| **WaveNet Parametric (W_w, 2.4 kb/s)** | 2.40 | 3.245 | 3.420 | 3.565 | 3.716 | 3.671% |
-| **WaveNet Parametric (W_wo, 2.4 kb/s)** | 2.40 | 2.230 | 7.505 | 7.905 | 1.537 | 1.643% |
-| **MELP (2.4 kb/s)** | 2.40 | 1.627 | 8.412 | 8.770 | -2.744 | 0.041% |
-| **Codec 2 (2.4 kb/s)** | 2.40 | 1.646 | 8.277 | 8.172 | -2.491 | 0.023% |
-| **Speex (2.15 kb/s)** | 2.15 | 1.893 | 7.459 | 8.219 | 0.426 | 0.069% |
-
-### 3. Parametric 2.4 kb/s & Reference Codec Comparison — VCTK Corpus
-
-| System / Codec | Bitrate (kb/s) | Objective Wideband MOS-LQO (1–5) | MCD (dB) ↓ | LSD (dB) ↓ | SegSNR (dB) ↑ | High-Band (4–8 kHz) Energy (%) |
-| :--- | :---: | :---: | :---: | :---: | :---: | :---: |
-| **Reference (16 kHz)** | 256.00 | 4.850 | 0.000 | 0.000 | 45.000 | 1.826% |
-| **8-bit mu-law (128 kb/s)** | 128.00 | 4.697 | 0.501 | 0.648 | 37.162 | 1.834% |
-| **WaveNet Waveform (WW)** | 93.24 | 4.697 | 0.501 | 0.648 | 37.162 | 1.834% |
-| **AMR-WB (23.85 kb/s)** | 23.85 | 3.364 | 3.541 | 5.359 | 8.749 | 1.563% |
-| **WaveNet Parametric (W_w, 2.4 kb/s)** | 2.40 | 3.110 | 4.210 | 4.056 | 4.352 | 2.064% |
-| **WaveNet Parametric (W_wo, 2.4 kb/s)** | 2.40 | 2.131 | 8.193 | 8.397 | 1.972 | 1.510% |
-| **MELP (2.4 kb/s)** | 2.40 | 1.454 | 9.397 | 9.090 | -2.683 | 0.033% |
-| **Codec 2 (2.4 kb/s)** | 2.40 | 1.356 | 10.187 | 8.785 | -2.545 | 0.015% |
-| **Speex (2.15 kb/s)** | 2.15 | 1.722 | 8.392 | 8.341 | 0.257 | 0.038% |
-
-### 4. Text-Independent Speaker Verification & Triangle Test (Section 3.4)
-
-| Dataset | 8-bit μ-law EER (%) [95% CI] | WaveNet W_wo (2.4 kb/s) EER (%) [95% CI] | WaveNet W_w (2.4 kb/s) EER (%) [95% CI] | Triangle Test Accuracy (W_w closer to μ-law than W_wo) |
-| :--- | :---: | :---: | :---: | :---: |
-| **LibriSpeech (`test-clean`)** | 12.05% [2.22%, 19.64%] | 25.00% [9.75%, 37.96%] | 25.00% [5.36%, 50.00%] | 43.25% (Δcos = +0.3206) |
-| **VCTK Corpus** | 25.00% [11.60%, 42.44%] | 37.05% [20.04%, 50.52%] | 24.55% [12.05%, 46.89%] | 42.60% (Δcos = +0.2990) |
+| Benchmark / Dataset | 8-bit μ-law EER (`V_mulaw`) | 2.4 kb/s Parametric WaveNet `W_wo` EER (`V_coded`) | Genuine vs. Impostor Cosine (`V_coded` on `W_wo`) |
+| :--- | :---: | :---: | :---: |
+| **Paper Reported (WSJ0, Sec. 3.4)** | 8.4% | 15.8% | — |
+| **Reproduced — Combined Held-Out Validation Set (16 spk, 40 utt)** | **5.81%** | **11.59%** | — |
+| **Reproduced — LibriSpeech (`test-clean`, 8 spk, 16 utt)** | **12.50%** [2.67%, 21.89%] | **22.32%** [8.48%, 32.61%] | `0.3780` vs `-0.0328` |
+| **Reproduced — VCTK Corpus (8 spk, 16 utt)** | **12.50%** [3.57%, 37.51%] | **15.18%** [3.57%, 37.95%] | `0.4166` vs `-0.0128` |
 
 ## Usage Examples
 
-### Load SafeTensors in Python (`wavenet-coding`)
+### Load SafeTensors & Extract L2-Normalized Speaker Embeddings (`wavenet-coding`)
 
 ```python
+import json
+import os
+import numpy as np
 from huggingface_hub import snapshot_download
-from wavenet_coding import inference
+from wavenet_coding import configs, dataset, export, model
 
 model_dir = snapshot_download("wq2012/wavenet-speaker-verifier-coded")
-codec = inference.WaveNetParametricCodec.from_pretrained(model_dir)
-```
+with open(os.path.join(model_dir, "config.json"), "r", encoding="utf-8") as f:
+    cfg = configs.SpeakerVerifierConfig.from_dict(json.load(f))
+verifier = model.build_speaker_verifier(cfg)
+export.load_safetensors_into_model(
+    verifier, os.path.join(model_dir, "model.safetensors")
+)
 
-### Run TFLite Flatbuffer (`model_int8.tflite`)
-
-```python
-import numpy as np
-import tensorflow as tf
-
-interpreter = tf.lite.Interpreter(model_path="model_int8.tflite")
-interpreter.allocate_tensors()
-input_details = interpreter.get_input_details()
-output_details = interpreter.get_output_details()
-```
-
-### Inspect GGUF v3 Binary (`model_q4_k_m.gguf`)
-
-```python
-from wavenet_coding import export
-
-header = export.inspect_gguf_header("model_q4_k_m.gguf")
-print(header)
+t = np.linspace(0.0, 0.5, 8000, endpoint=False, dtype=np.float32)
+waveform_16k = 0.12 * np.sin(2.0 * np.pi * 180.0 * t)
+mel_feats = dataset.extract_log_mel_features(waveform_16k, max_frames=80)
+embedding = verifier(mel_feats[np.newaxis, ...], training=False).numpy()[0]
+print("Embedding shape:", embedding.shape, "L2 norm:", np.linalg.norm(embedding))
 ```
 
 ## Citation

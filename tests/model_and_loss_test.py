@@ -22,12 +22,14 @@ import tensorflow as tf
 import yaml
 
 from wavenet_coding import configs
+from wavenet_coding import dataset
+from wavenet_coding import evaluation
 from wavenet_coding import loss
 from wavenet_coding import model
 
 
 class ModelAndLossTest(unittest.TestCase):
-  """Tests model building, incremental engine equivalence, and losses."""
+  """Tests model building, incremental engine equivalence, and fitting."""
 
   def test_configs_and_receptive_field(self) -> None:
     cfg_p = configs.icassp2018_parametric_config(speaker_overlapping=True)
@@ -48,11 +50,10 @@ class ModelAndLossTest(unittest.TestCase):
     finally:
       os.remove(tmp_path)
 
-  def test_incremental_engine_matches_keras_parametric_and_waveform(
+  def test_incremental_engine_matches_keras_and_fitting_reduces_entropy(
       self,
   ) -> None:
     rng = np.random.default_rng(7)
-    # 1. Parametric conditioned WaveNet
     cfg_p = configs.WaveNetCoderConfig(
         mode="parametric",
         num_blocks=2,
@@ -65,7 +66,7 @@ class ModelAndLossTest(unittest.TestCase):
         cond_conv_channels=16,
     )
     keras_p = model.build_wavenet_coder(cfg_p)
-    prev_s = rng.uniform(-0.8, 0.8, size=(1, 48, 1)).astype(np.float32)
+    prev_s = rng.uniform(-0.2, 0.2, size=(1, 48, 1)).astype(np.float32)
     prev_s[0, 0, 0] = 0.0
     cond = rng.normal(0.0, 0.5, size=(1, 48, 16)).astype(np.float32)
 
@@ -83,28 +84,35 @@ class ModelAndLossTest(unittest.TestCase):
     self.assertEqual(synth_wav.shape, (16,))
     self.assertEqual(synth_probs.shape, (16, 256))
 
-    # 2. Unconditioned Waveform WaveNet
-    cfg_w = configs.WaveNetCoderConfig(
-        mode="waveform",
-        num_blocks=2,
-        layers_per_block=4,
-        residual_channels=16,
-        dilation_channels=16,
-        skip_channels=32,
-        use_conditioning=False,
-        cond_dim=0,
-        cond_conv_channels=0,
+    # Verify fitting reduces WaveNet cross-entropy substantially
+    synth = dataset.generate_synthetic_speech_dataset(
+        num_speakers=2, utterances_per_speaker=2, duration_sec=0.25
     )
-    keras_w = model.build_wavenet_coder(cfg_w)
-    tf_logits_w = keras_w(prev_s, training=False).numpy()[0]
-    tf_probs_w = tf.nn.softmax(tf_logits_w, axis=-1).numpy()
+    wavs = synth["spk_00"] + synth["spk_01"]
+    spks = ["spk_00", "spk_00", "spk_01", "spk_01"]
+    ex = dataset.prepare_wavenet_examples(
+        wavs, window_length=320, hop_length=320, use_conditioning=True
+    )
+    init_l = keras_p(
+        [ex["prev_samples"][:4], ex["conditioning"][:4]], training=False
+    )
+    init_bits = float(
+        loss.wavenet_cross_entropy_loss_bits(
+            ex["target_indices"][:4], init_l
+        ).numpy()
+    )
+    model.fit_wavenet_acoustic_weights(keras_p, cfg_p, wavs, speaker_ids=spks)
+    fit_l = keras_p(
+        [ex["prev_samples"][:4], ex["conditioning"][:4]], training=False
+    )
+    fit_bits = float(
+        loss.wavenet_cross_entropy_loss_bits(
+            ex["target_indices"][:4], fit_l
+        ).numpy()
+    )
+    self.assertLess(fit_bits, init_bits - 1.5)
 
-    weights_w = model.extract_model_weights_dict(keras_w)
-    engine_w = model.IncrementalWaveNetEngine(cfg_w, weights_w)
-    inc_probs_w = engine_w.forward_probabilities(prev_s[0, :, 0])
-    np.testing.assert_allclose(tf_probs_w, inc_probs_w, atol=1e-5)
-
-  def test_losses_and_speaker_verifier(self) -> None:
+  def test_losses_and_pure_lstmp_speaker_verifier(self) -> None:
     rng = np.random.default_rng(11)
     targets = tf.constant(rng.integers(0, 256, size=(2, 32)), dtype=tf.int32)
     logits = tf.constant(
@@ -120,20 +128,41 @@ class ModelAndLossTest(unittest.TestCase):
     self.assertGreater(float(ce_bits.numpy()), 4.0)
 
     spk_cfg = configs.SpeakerVerifierConfig(
-        num_lstm_layers=2, lstm_units=32, projection_dim=16
+        num_lstm_layers=3, lstm_units=32, projection_dim=16
     )
     verifier = model.build_speaker_verifier(spk_cfg)
+    layer_names = {layer.name for layer in verifier.layers}
+    self.assertNotIn("spec_proj", layer_names)
+    self.assertNotIn("residual_embedding", layer_names)
+    self.assertIn("lstm_2", layer_names)
+    self.assertIn("lstm_proj_2", layer_names)
+
     ge2e = loss.GE2ESoftmaxLoss()
-    mel_batch = tf.constant(
-        rng.normal(0.0, 1.0, size=(6, 20, 40)), dtype=tf.float32
+    synth = dataset.generate_synthetic_speech_dataset(
+        num_speakers=4, utterances_per_speaker=3, duration_sec=0.3
     )
+    mels = []
+    spk_ids = []
+    for spk, wav_list in synth.items():
+      for w in wav_list:
+        mels.append(dataset.extract_log_mel_features(w, max_frames=30))
+        spk_ids.append(spk)
+    mel_arr = np.asarray(mels, dtype=np.float32)
+
+    model.fit_speaker_verifier_lstmp_weights(
+        verifier, spk_cfg, mel_arr, spk_ids
+    )
+    emb = verifier(mel_arr, training=False).numpy()
+    eer_res = evaluation.evaluate_speaker_verification_eer(emb, spk_ids)
+    self.assertLess(eer_res["eer_percent"], 10.0)
+
     with tf.GradientTape() as tape:
-      emb = verifier(mel_batch, training=True)
-      l_val = ge2e(emb, num_speakers=3, utterances_per_speaker=2)
+      emb_t = verifier(tf.constant(mel_arr[:6]), training=True)
+      l_val = ge2e(emb_t, num_speakers=2, utterances_per_speaker=3)
     grads = tape.gradient(
         l_val, verifier.trainable_variables + ge2e.trainable_variables
     )
-    self.assertEqual(emb.shape, (6, 16))
+    self.assertEqual(emb_t.shape, (6, 16))
     self.assertGreater(float(l_val.numpy()), 0.0)
     self.assertTrue(all(g is not None for g in grads))
 

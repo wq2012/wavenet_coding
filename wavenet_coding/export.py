@@ -170,16 +170,8 @@ def export_tflite_models(
           u_lstm.set_weights(layer.get_weights())
         elif layer.name.startswith("lstm_proj_"):
           h = layer(h)
-      last_f = h[:, -1, :]
-      mean_f = tf.reduce_mean(h, axis=1)
-      comb = last_f + mean_f
-      emb_layer = model.get_layer("embedding_dense")
-      lstm_out = emb_layer(comb)
-      spec_mean = tf.reduce_mean(unrolled_in, axis=1)
-      spec_layer = model.get_layer("spec_proj")
-      raw_emb = spec_layer(spec_mean) + lstm_out
-      centered = raw_emb - tf.reduce_mean(raw_emb, axis=-1, keepdims=True)
-      out_t = tf.math.l2_normalize(centered, axis=-1)
+      last_f = model.get_layer("last_frame")(h)
+      out_t = model.get_layer("l2_normalized_embedding")(last_f)
       static_model = tf.keras.Model(inputs=unrolled_in, outputs=out_t)
 
       @tf.function(

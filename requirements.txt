@@ -4,3 +4,5 @@ soundfile>=0.10.0
 safetensors>=0.3.0
 PyYAML>=6.0
 tensorflow>=2.9.0
+pesq>=0.0.4
+pystoi>=0.4.1

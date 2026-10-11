@@ -46,8 +46,11 @@ def parse_args() -> argparse.Namespace:
       "--mode",
       type=str,
       default="parametric",
-      choices=["parametric", "waveform"],
-      help="Coding mode: 'parametric' (2.4 kb/s) or 'waveform' (closed-loop).",
+      choices=["parametric", "waveform", "hybrid"],
+      help=(
+          "Coding mode: 'parametric' (2.4 kb/s), 'waveform' (closed-loop), "
+          "or 'hybrid' (mode-switching)."
+      ),
   )
   parser.add_argument(
       "--model_dir",
@@ -82,6 +85,20 @@ def main() -> None:
         "mode": "waveform",
         "rate_metrics": result["rate_metrics"],
         "lossless_exact_match": result["lossless_exact_match"],
+        "pesq_wb_mos_lqo": evaluation.compute_pesq_wb_mos_lqo(wav, rec),
+        "stoi": evaluation.compute_stoi(wav, rec),
+        "objective_mos_lqo": evaluation.compute_objective_mos_lqo(wav, rec),
+    }
+  elif args.mode == "hybrid":
+    codec = inference.HybridModeSwitchingCodec()
+    result = codec.encode_and_decode(wav, temperature=args.temperature)
+    rec = result["reconstructed_waveform"]
+    summary = {
+        "mode": "hybrid",
+        "average_bitrate_kbps": result["average_bitrate_kbps"],
+        "waveform_frame_fraction": result["waveform_frame_fraction"],
+        "pesq_wb_mos_lqo": evaluation.compute_pesq_wb_mos_lqo(wav, rec),
+        "stoi": evaluation.compute_stoi(wav, rec),
         "objective_mos_lqo": evaluation.compute_objective_mos_lqo(wav, rec),
     }
   else:
@@ -95,7 +112,11 @@ def main() -> None:
         "mode": "parametric",
         "bitrate_kbps": 2.4,
         "conditional_rate_metrics": result["conditional_rate_metrics"],
+        "pesq_wb_mos_lqo": evaluation.compute_pesq_wb_mos_lqo(wav, rec),
+        "stoi": evaluation.compute_stoi(wav, rec),
         "objective_mos_lqo": evaluation.compute_objective_mos_lqo(wav, rec),
+        "mcd_db": evaluation.compute_mel_cepstral_distortion_db(wav, rec),
+        "lsd_db": evaluation.compute_log_spectral_distance_db(wav, rec),
         "high_band_energy_ratio_percent": (
             evaluation.compute_high_band_energy_ratio(rec) * 100.0
         ),

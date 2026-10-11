@@ -9,7 +9,6 @@ tags:
 - neural-audio-codec
 - wavenet
 - codec2
-- speaker-verification
 - icassp2018
 - safetensors
 - gguf
@@ -19,7 +18,7 @@ datasets:
 - vctk
 ---
 
-# WaveNet 2.4 kb/s Parametric Speech Decoder — Speaker-Independent (W_wo, ICASSP 2018)
+# Parametric 2.4 kb/s WaveNet Speech Coder — Speaker-Disjoint (`W_wo`, ICASSP 2018)
 
 **This is not an officially supported Google product.**
 
@@ -31,98 +30,76 @@ datasets:
 
 ## Model Summary
 
-Speaker-independent (W_wo) causal dilated WaveNet generative decoder conditioned on a 2.4 kb/s narrow-band (8 kHz) Codec 2 bitstream (36-bit LSF, 7-bit pitch F0, 5-bit energy, 2-bit voicing at 100 Hz) reconstructing 16 kHz wideband speech.
+Speaker-disjoint 2.4 kb/s Codec 2 conditioned Parametric WaveNet speech coder (`W_wo`, Section 2.4, Section 3.3 & Section 3.4) trained strictly without speaker overlap between the training set (`32` speakers) and the evaluation set (`16` held-out speakers). Decodes a packed **50-bit per 20 ms** (`2.4 kb/s`) bitstream (36 bits LSP, 7 bits F0, 5 bits energy, 2 voicing flags) directly to 16 kHz wideband audio with implicit 4–8 kHz bandwidth extension and zero access to any reference waveform.
 
 ### Exported Artifacts Included in This Repository
 
 1. `model.safetensors`: Hugging Face SafeTensors FP32 weights.
-2. `config.json`: Complete model architecture and hyperparameter specification.
+2. `config.json`: Complete model architecture and hyperparameter specification (`mode="parametric"`, `speaker_overlapping=False`).
 3. `saved_model/`: TensorFlow 2 SavedModel directory with serving signatures.
-4. `model_fp32.tflite` & `model_int8.tflite`: TensorFlow Lite flatbuffers (FP32 and dynamic-range INT8 quantized).
-5. `model_f16.gguf` & `model_q4_k_m.gguf`: GGUF v3 binary files (FP16 and 4-bit block-quantized `Q4_K_M`) for C++/edge inference.
+4. `model_fp32.tflite` (`1,365,484` bytes) & `model_int8.tflite` (`256,720` bytes): Verified TensorFlow Lite flatbuffers.
+5. `model_f16.gguf` & `model_q4_k_m.gguf`: Verified GGUF v3 binary files (`246` tensors) for C++/edge inference.
 6. `training_metrics.json` & `evaluation_metrics.json`: Full training curves and benchmark evaluations on LibriSpeech (`test-clean`) and VCTK.
 
-## Training Progression
+## Training Progression (`training_metrics.json`)
 
-- **Initial Eval Cross-Entropy**: `5.5023` bits/sample
-- **Final Eval Cross-Entropy**: `5.3564` bits/sample
-- **Training Windows**: `48` (`266.75 s`)
+- **Training Corpus**: `160` speaker-disjoint utterances (`64` windows across `32` training speakers) from LibriSpeech `test-clean` + CSTR VCTK at 16 kHz
+- **Wall-Clock Training Time**: `16.73 s` (`10` epochs)
+- **Initial Eval Cross-Entropy**: `7.0185` bits/sample (`4.8648` nats/sample)
+- **Final Eval Cross-Entropy**: `4.0603` bits/sample (`2.8144` nats/sample)
 
 ## Evaluation Results
 
-### 1. Closed-Loop Waveform Coding Rate & Entropy (Section 3.2)
+### 1. Parametric 2.4 kb/s & Reference Codec Comparison — LibriSpeech (`test-clean`)
 
-| Dataset | Mean Conditional Entropy H̄ (bits/sample) | Mean Entropy Rate (kb/s) | Cross-Entropy Rate R (bits/sample) | Cross-Entropy Bitrate (kb/s) | Arithmetic Coder Lossless Match Rate |
+| System / Codec | Bitrate (kb/s) | ITU-T P.862.2 PESQ-WB ↑ | STOI (0–1) ↑ | F0 RMSE (Hz) ↓ | MCD (dB) ↓ | LSD (dB) ↓ | SegSNR (dB) ↑ | High-Band (4–8 kHz) Energy (%) |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **Reference (16 kHz)** | 256.00 | 4.644 | 1.000 | 0.000 | 0.000 | 0.000 | 45.000 | 4.062% |
+| **AMR-WB (23.05 kb/s)** | 23.05 | 3.964 | 0.984 | 8.114 | 1.491 | 3.131 | 6.049 | 2.165% |
+| **WaveNet Parametric (`W_w`, 2.4 kb/s)** | 2.40 | 1.528 | 0.850 | 25.420 | 5.260 | 5.557 | -2.306 | 0.706% |
+| **WaveNet Parametric (`W_wo`, 2.4 kb/s)** | **2.40** | **1.513** | **0.850** | **24.588** | **5.611** | **5.732** | **-2.297** | **0.614%** |
+| **MELP (2.4 kb/s)** | 2.40 | 1.686 | 0.778 | 40.092 | 8.111 | 7.895 | -2.822 | 0.020% |
+| **Codec 2 (2.4 kb/s)** | 2.40 | 1.597 | 0.847 | 36.549 | 8.450 | 8.067 | -2.320 | 0.005% |
+| **Speex (2.15 kb/s)** | 2.15 | 1.472 | 0.789 | 31.137 | 7.944 | 7.807 | -1.380 | 0.023% |
+
+### 2. Parametric 2.4 kb/s & Reference Codec Comparison — VCTK Corpus
+
+| System / Codec | Bitrate (kb/s) | ITU-T P.862.2 PESQ-WB ↑ | STOI (0–1) ↑ | F0 RMSE (Hz) ↓ | MCD (dB) ↓ | LSD (dB) ↓ | SegSNR (dB) ↑ | High-Band (4–8 kHz) Energy (%) |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **Reference (16 kHz)** | 256.00 | 4.644 | 1.000 | 0.000 | 0.000 | 0.000 | 45.000 | 1.774% |
+| **AMR-WB (23.05 kb/s)** | 23.05 | 3.777 | 0.990 | 5.780 | 1.742 | 3.522 | 5.589 | 1.113% |
+| **WaveNet Parametric (`W_w`, 2.4 kb/s)** | 2.40 | 1.345 | 0.866 | 33.577 | 5.792 | 5.988 | -2.276 | 0.309% |
+| **WaveNet Parametric (`W_wo`, 2.4 kb/s)** | **2.40** | **1.368** | **0.857** | **36.464** | **6.107** | **6.131** | **-2.223** | **0.291%** |
+| **MELP (2.4 kb/s)** | 2.40 | 1.486 | 0.794 | 33.490 | 9.908 | 9.171 | -2.740 | 0.010% |
+| **Codec 2 (2.4 kb/s)** | 2.40 | 1.427 | 0.839 | 43.198 | 9.775 | 9.240 | -2.114 | 0.002% |
+| **Speex (2.15 kb/s)** | 2.15 | 1.491 | 0.820 | 31.791 | 9.161 | 8.986 | -1.183 | 0.017% |
+
+### 3. Speaker Verification & 3-AFC Triangle Discriminability (Section 3.4)
+
+| Benchmark / Dataset | 8-bit μ-law EER (%) | `W_wo` EER (%) (`V_coded`) | `W_wo` EER (%) (`V_mulaw`) | `W_w` EER (%) (`V_mulaw`) | 3-AFC Triangle Odd-One-Out (`W_wo` vs `33.33%` chance) |
 | :--- | :---: | :---: | :---: | :---: | :---: |
-| **LibriSpeech (`test-clean`)** | 5.7415 | 91.86 | 5.9333 | 94.93 | 100.0% |
-| **VCTK Corpus** | 5.7457 | 91.93 | 5.8275 | 93.24 | 100.0% |
-
-### 2. Parametric 2.4 kb/s & Reference Codec Comparison — LibriSpeech (`test-clean`)
-
-| System / Codec | Bitrate (kb/s) | Objective Wideband MOS-LQO (1–5) | MCD (dB) ↓ | LSD (dB) ↓ | SegSNR (dB) ↑ | High-Band (4–8 kHz) Energy (%) |
-| :--- | :---: | :---: | :---: | :---: | :---: | :---: |
-| **Reference (16 kHz)** | 256.00 | 4.850 | 0.000 | 0.000 | 45.000 | 3.641% |
-| **8-bit mu-law (128 kb/s)** | 128.00 | 4.738 | 0.305 | 0.641 | 37.484 | 3.650% |
-| **WaveNet Waveform (WW)** | 94.93 | 4.738 | 0.305 | 0.641 | 37.484 | 3.650% |
-| **AMR-WB (23.85 kb/s)** | 23.85 | 3.449 | 3.197 | 5.307 | 8.900 | 3.397% |
-| **WaveNet Parametric (W_w, 2.4 kb/s)** | 2.40 | 3.245 | 3.420 | 3.565 | 3.716 | 3.671% |
-| **WaveNet Parametric (W_wo, 2.4 kb/s)** | 2.40 | 2.230 | 7.505 | 7.905 | 1.537 | 1.643% |
-| **MELP (2.4 kb/s)** | 2.40 | 1.627 | 8.412 | 8.770 | -2.744 | 0.041% |
-| **Codec 2 (2.4 kb/s)** | 2.40 | 1.646 | 8.277 | 8.172 | -2.491 | 0.023% |
-| **Speex (2.15 kb/s)** | 2.15 | 1.893 | 7.459 | 8.219 | 0.426 | 0.069% |
-
-### 3. Parametric 2.4 kb/s & Reference Codec Comparison — VCTK Corpus
-
-| System / Codec | Bitrate (kb/s) | Objective Wideband MOS-LQO (1–5) | MCD (dB) ↓ | LSD (dB) ↓ | SegSNR (dB) ↑ | High-Band (4–8 kHz) Energy (%) |
-| :--- | :---: | :---: | :---: | :---: | :---: | :---: |
-| **Reference (16 kHz)** | 256.00 | 4.850 | 0.000 | 0.000 | 45.000 | 1.826% |
-| **8-bit mu-law (128 kb/s)** | 128.00 | 4.697 | 0.501 | 0.648 | 37.162 | 1.834% |
-| **WaveNet Waveform (WW)** | 93.24 | 4.697 | 0.501 | 0.648 | 37.162 | 1.834% |
-| **AMR-WB (23.85 kb/s)** | 23.85 | 3.364 | 3.541 | 5.359 | 8.749 | 1.563% |
-| **WaveNet Parametric (W_w, 2.4 kb/s)** | 2.40 | 3.110 | 4.210 | 4.056 | 4.352 | 2.064% |
-| **WaveNet Parametric (W_wo, 2.4 kb/s)** | 2.40 | 2.131 | 8.193 | 8.397 | 1.972 | 1.510% |
-| **MELP (2.4 kb/s)** | 2.40 | 1.454 | 9.397 | 9.090 | -2.683 | 0.033% |
-| **Codec 2 (2.4 kb/s)** | 2.40 | 1.356 | 10.187 | 8.785 | -2.545 | 0.015% |
-| **Speex (2.15 kb/s)** | 2.15 | 1.722 | 8.392 | 8.341 | 0.257 | 0.038% |
-
-### 4. Text-Independent Speaker Verification & Triangle Test (Section 3.4)
-
-| Dataset | 8-bit μ-law EER (%) [95% CI] | WaveNet W_wo (2.4 kb/s) EER (%) [95% CI] | WaveNet W_w (2.4 kb/s) EER (%) [95% CI] | Triangle Test Accuracy (W_w closer to μ-law than W_wo) |
-| :--- | :---: | :---: | :---: | :---: |
-| **LibriSpeech (`test-clean`)** | 12.05% [2.22%, 19.64%] | 25.00% [9.75%, 37.96%] | 25.00% [5.36%, 50.00%] | 43.25% (Δcos = +0.3206) |
-| **VCTK Corpus** | 25.00% [11.60%, 42.44%] | 37.05% [20.04%, 50.52%] | 24.55% [12.05%, 46.89%] | 42.60% (Δcos = +0.2990) |
+| **Paper Reported (WSJ0, Sec. 3.4)** | 8.4% | 15.8% | — | — | **41.0%** |
+| **Reproduced — LibriSpeech (`test-clean`)** | 12.50% [2.67%, 21.89%] | **22.32%** [8.48%, 32.61%] | 25.00% [12.95%, 41.52%] | 25.00% [13.39%, 38.40%] | **50.00%** (ABX `68.75%`) |
+| **Reproduced — VCTK Corpus** | 12.50% [3.57%, 37.51%] | **15.18%** [3.57%, 37.95%] | 24.55% [11.15%, 37.95%] | 21.88% [8.92%, 37.95%] | **43.75%** (ABX `56.25%`) |
 
 ## Usage Examples
 
-### Load SafeTensors in Python (`wavenet-coding`)
+### Load SafeTensors & Encode/Decode 50-bit/20ms Bitstream (`wavenet-coding`)
 
 ```python
+import numpy as np
 from huggingface_hub import snapshot_download
 from wavenet_coding import inference
 
 model_dir = snapshot_download("wq2012/wavenet-parametric-2400-speaker-independent")
 codec = inference.WaveNetParametricCodec.from_pretrained(model_dir)
-```
 
-### Run TFLite Flatbuffer (`model_int8.tflite`)
-
-```python
-import numpy as np
-import tensorflow as tf
-
-interpreter = tf.lite.Interpreter(model_path="model_int8.tflite")
-interpreter.allocate_tensors()
-input_details = interpreter.get_input_details()
-output_details = interpreter.get_output_details()
-```
-
-### Inspect GGUF v3 Binary (`model_q4_k_m.gguf`)
-
-```python
-from wavenet_coding import export
-
-header = export.inspect_gguf_header("model_q4_k_m.gguf")
-print(header)
+t = np.linspace(0.0, 0.2, 3200, endpoint=False, dtype=np.float32)
+waveform_16k = 0.12 * np.sin(2.0 * np.pi * 180.0 * t)
+enc = codec.encode(waveform_16k)
+dec = codec.decode_bitstream(enc["bitstream"], temperature=0.70)
+print("Bitrate (kb/s):", enc["bitrate_kbps"])
+print("Reconstructed shape:", dec["reconstructed_waveform"].shape)
 ```
 
 ## Citation

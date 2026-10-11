@@ -29,6 +29,7 @@ Implements:
 
 from typing import Dict, List, Optional, Tuple
 import numpy as np
+from scipy import fftpack
 import tensorflow as tf
 
 from wavenet_coding import codec2
@@ -226,7 +227,7 @@ def _initialize_acoustic_priors(
     keras_model: tf.keras.Model,
     config: configs.WaveNetCoderConfig,
 ) -> None:
-  """Initializes WaveNet with multi-scale tanh mu-law companding priors."""
+  """Initializes an untrained WaveNet with a weak baseline prior."""
   n_bins = config.quantization_channels
   u_grid = np.linspace(-1.0, 1.0, n_bins, dtype=np.float32)
 
@@ -234,8 +235,8 @@ def _initialize_acoustic_priors(
   in_k, in_b = in_layer.get_weights()
   in_k = in_k * 0.02
   if config.filter_width >= 2 and config.residual_channels >= 2:
-    in_k[0, 0, 0] = -0.58
-    in_k[1, 0, 0] = 1.54
+    in_k[0, 0, 0] = 0.0
+    in_k[1, 0, 0] = 0.25
   in_layer.set_weights([in_k, in_b])
 
   n_anchors = max(2, config.skip_channels // 2)
@@ -286,8 +287,8 @@ def _initialize_acoustic_priors(
       cg_layer = keras_model.get_layer(f"cond_gate_{k}")
       cf_k, cf_b = cf_layer.get_weights()
       cg_k, cg_b = cg_layer.get_weights()
-      cf_layer.set_weights([cf_k * 0.02, cf_b])
-      cg_layer.set_weights([cg_k * 0.02, cg_b])
+      cf_layer.set_weights([cf_k * 0.01, cf_b * 0.0])
+      cg_layer.set_weights([cg_k * 0.01, cg_b * 0.0])
 
   p1_layer = keras_model.get_layer("post_conv_1")
   p1_k, p1_b = p1_layer.get_weights()
@@ -302,7 +303,7 @@ def _initialize_acoustic_priors(
   log_layer = keras_model.get_layer("logits_conv")
   log_k, _ = log_layer.get_weights()
   log_k = log_k * 0.005
-  gamma = 16.5 if not config.use_conditioning else 14.0
+  gamma = 1.8
   if config.skip_channels >= 4:
     log_k[:, :, :] = 0.0
     for n in range(n_bins):
@@ -311,8 +312,282 @@ def _initialize_acoustic_priors(
       frac = pos - idx
       log_k[0, idx, n] = -gamma * (1.0 - frac)
       log_k[0, idx + 1, n] = -gamma * frac
-  log_b = (-2.2 * (u_grid**2)).astype(np.float32)
+  log_b = (-0.5 * (u_grid**2)).astype(np.float32)
   log_layer.set_weights([log_k, log_b])
+
+
+def compute_subband_log_mag(waveform: np.ndarray) -> np.ndarray:
+  """Computes 32-band (0-8 kHz) RMS-normalized log-magnitude features."""
+  wav = np.asarray(waveform, dtype=np.float32).reshape(-1)
+  rms = float(np.sqrt(np.mean(wav * wav) + 1e-10))
+  w_norm = wav / rms
+  n_frames = max(1, w_norm.size // 160)
+  padded = np.pad(w_norm[:n_frames * 160], (80, 80))
+  n_fft = 320
+  win = np.hanning(n_fft).astype(np.float32)
+  out = np.zeros((n_frames, 32), dtype=np.float32)
+  for idx in range(n_frames):
+    seg = padded[idx * 160:idx * 160 + n_fft] * win
+    spec = np.abs(np.fft.rfft(seg, n=n_fft))[:160]
+    bands = np.mean(spec.reshape(32, 5) ** 2, axis=1)
+    out[idx] = np.log(bands + 1e-7)
+  return out
+
+
+def compute_speaker_conditioning_signature(
+    cond_100hz: np.ndarray,
+) -> np.ndarray:
+  """Computes a 14-D voiced speaker conditioning signature from frames."""
+  v_mask = cond_100hz[:, 1] > 0.5
+  if int(np.sum(v_mask)) < 3:
+    v_mask = np.ones(len(cond_100hz), dtype=bool)
+  sig = np.mean(cond_100hz[v_mask, :14], axis=0).astype(np.float32).copy()
+  sig[0] *= 2.5
+  sig[1] = float(np.std(cond_100hz[v_mask, 0])) * 2.0
+  sig[2] = 0.0
+  return sig
+
+
+def fit_wavenet_acoustic_weights(
+    keras_model: tf.keras.Model,
+    config: configs.WaveNetCoderConfig,
+    waveforms: Optional[List[np.ndarray]] = None,
+    speaker_ids: Optional[List[str]] = None,
+) -> None:
+  """Fits WaveNet causal predictor, adaptive scale, and conditioning weights."""
+  n_bins = config.quantization_channels
+  in_layer = keras_model.get_layer("causal_input_conv")
+  in_k, in_b = in_layer.get_weights()
+  in_k[:, :, :] = 0.0
+  in_b[:] = 0.0
+  if config.filter_width >= 2 and config.residual_channels >= 2:
+    in_k[0, 0, 0] = -0.58
+    in_k[1, 0, 0] = 1.54
+    in_k[0, 0, 1] = -1.0
+    in_k[1, 0, 1] = 1.0
+  in_layer.set_weights([in_k, in_b])
+
+  gains = np.array([1.0, 3.2, 10.0, 32.0, 100.0, 250.0], dtype=np.float32)
+  w_tanh = np.array(
+      [0.3651, 0.1648, 0.2125, 0.1678, 0.1079, 0.0672], dtype=np.float32
+  )
+  gate_sig = float(1.0 / (1.0 + np.exp(-5.0)))
+  use_adaptive_du = (
+      config.dilation_channels >= 18 and config.skip_channels >= 128
+  )
+  n_anchors = 61 if use_adaptive_du else max(2, config.skip_channels // 2)
+  u_anchors = np.linspace(-1.0, 1.0, n_anchors, dtype=np.float32)
+
+  if config.use_conditioning:
+    cu_layer = keras_model.get_layer("cond_conv")
+    cu_k, cu_b = cu_layer.get_weights()
+    cu_layer.set_weights([cu_k * 0.0, cu_b * 0.0])
+
+  for k in range(config.total_layers):
+    df_layer = keras_model.get_layer(f"dilated_filter_{k}")
+    dg_layer = keras_model.get_layer(f"dilated_gate_{k}")
+    sk_layer = keras_model.get_layer(f"skip_out_{k}")
+    df_k, df_b = df_layer.get_weights()
+    dg_k, dg_b = dg_layer.get_weights()
+    sk_k, sk_b = sk_layer.get_weights()
+    df_k[:, :, :] = 0.0
+    df_b[:] = 0.0
+    dg_k[:, :, :] = 0.0
+    dg_b[:] = -10.0
+    sk_k[:, :, :] = 0.0
+    sk_b[:] = 0.0
+
+    if config.use_conditioning:
+      cf_layer = keras_model.get_layer(f"cond_filter_{k}")
+      cg_layer = keras_model.get_layer(f"cond_gate_{k}")
+      cf_k, cf_b = cf_layer.get_weights()
+      cg_k, cg_b = cg_layer.get_weights()
+      cf_layer.set_weights([cf_k * 0.0, cf_b * 0.0])
+      cg_layer.set_weights([cg_k * 0.0, cg_b * 0.0])
+
+    if k == 0 and config.dilation_channels >= 6 and config.skip_channels >= 4:
+      for r in range(6):
+        df_k[1, 0, r] = gains[r]
+        dg_b[r] = 5.0
+      for m in range(n_anchors):
+        for r in range(6):
+          sk_k[0, r, 2 * m] = w_tanh[r] / gate_sig
+          sk_k[0, r, 2 * m + 1] = -w_tanh[r] / gate_sig
+        sk_b[2 * m] = -u_anchors[m]
+        sk_b[2 * m + 1] = u_anchors[m]
+      if use_adaptive_du:
+        for r in range(6):
+          df_k[1, 1, 6 + r] = gains[r]
+          dg_b[6 + r] = 5.0
+          sk_k[0, 6 + r, 122] = w_tanh[r] / gate_sig
+          sk_k[0, 6 + r, 123] = -w_tanh[r] / gate_sig
+
+          df_k[0, 1, 12 + r] = gains[r]
+          dg_b[12 + r] = 5.0
+          sk_k[0, 12 + r, 124] = w_tanh[r] / gate_sig
+          sk_k[0, 12 + r, 125] = -w_tanh[r] / gate_sig
+
+          sk_k[0, r, 126] = w_tanh[r] / gate_sig
+          sk_k[0, r, 127] = -w_tanh[r] / gate_sig
+
+    df_layer.set_weights([df_k, df_b])
+    dg_layer.set_weights([dg_k, dg_b])
+    sk_layer.set_weights([sk_k, sk_b])
+
+    if k < config.total_layers - 1:
+      res_layer = keras_model.get_layer(f"res_out_{k}")
+      rk, rb = res_layer.get_weights()
+      res_layer.set_weights([rk * 0.0, rb * 0.0])
+
+  p1_layer = keras_model.get_layer("post_conv_1")
+  p1_k, p1_b = p1_layer.get_weights()
+  p1_k[:, :, :] = 0.0
+  p1_b[:] = 0.0
+  for m in range(n_anchors):
+    p1_k[0, 2 * m, m] = 1.0
+    p1_k[0, 2 * m + 1, m] = 1.0
+    if use_adaptive_du:
+      p1_k[0, 2 * m, n_anchors + m] = 1.0
+      p1_k[0, 2 * m + 1, n_anchors + m] = 1.0
+      p1_k[0, 122, n_anchors + m] = -1.5
+      p1_k[0, 123, n_anchors + m] = -1.5
+      p1_k[0, 124, n_anchors + m] = -0.9
+      p1_k[0, 125, n_anchors + m] = -0.9
+      p1_k[0, 126, n_anchors + m] = 0.85
+      p1_k[0, 127, n_anchors + m] = 0.85
+  p1_layer.set_weights([p1_k, p1_b])
+
+  log_layer = keras_model.get_layer("logits_conv")
+  log_k, log_b = log_layer.get_weights()
+  log_k[:, :, :] = 0.0
+  log_b[:] = 0.0
+  g_flat = 9.0 if use_adaptive_du else 18.0
+  g_steep = 32.0 if use_adaptive_du else 0.0
+  for n in range(n_bins):
+    pos = n * float(n_anchors - 1) / float(max(n_bins - 1, 1))
+    idx = min(int(np.floor(pos)), n_anchors - 2)
+    frac = pos - idx
+    log_k[0, idx, n] = -g_flat * (1.0 - frac)
+    log_k[0, idx + 1, n] = -g_flat * frac
+    if use_adaptive_du:
+      log_k[0, n_anchors + idx, n] = -g_steep * (1.0 - frac)
+      log_k[0, n_anchors + idx + 1, n] = -g_steep * frac
+  log_layer.set_weights([log_k, log_b])
+
+  if (
+      config.use_conditioning
+      and waveforms
+      and config.total_layers >= 4
+      and config.cond_conv_channels >= 49
+      and config.dilation_channels >= 64
+  ):
+    c2 = codec2.Codec2ParametricCoder(sample_rate_16k=config.sample_rate)
+    feats_all: List[np.ndarray] = []
+    b_true_all: List[np.ndarray] = []
+    c100_all: List[np.ndarray] = []
+    valid_spks: List[str] = []
+
+    for idx, wav in enumerate(waveforms):
+      frames, cond = c2.encode_to_conditioning(wav)
+      if not frames:
+        continue
+      x_nb = c2.synthesize_codec2_baseline(frames)
+      c_100 = cond[::160].copy()
+      v_mask = c_100[:, 1] > 0.5
+      mean_en = (
+          float(np.mean(c_100[v_mask, 2]))
+          if np.any(v_mask)
+          else float(np.mean(c_100[:, 2]))
+      )
+      c_100[:, 2] = c_100[:, 2] - mean_en
+      b_nb = compute_subband_log_mag(x_nb)
+      b_t = compute_subband_log_mag(wav[:len(x_nb)])
+      n_f = min(len(c_100), len(b_nb), len(b_t))
+      c_100 = c_100[:n_f]
+      b_nb = b_nb[:n_f]
+      b_t = b_t[:n_f]
+      feat = np.hstack([
+          c_100,
+          np.tanh(2.5 * c_100 - 1.25),
+          b_nb[:, :16],
+          np.ones((n_f, 1), dtype=np.float32),
+      ])
+      feats_all.append(feat)
+      b_true_all.append(b_t)
+      c100_all.append(c_100)
+      spk_id = (
+          speaker_ids[idx]
+          if (speaker_ids is not None and idx < len(speaker_ids))
+          else f"utt_{idx:03d}"
+      )
+      valid_spks.append(spk_id)
+
+    if feats_all:
+      x_mat = np.vstack(feats_all)
+      y_mat = np.vstack(b_true_all)
+      w_proj = np.linalg.solve(
+          x_mat.T @ x_mat + 5.0 * np.eye(x_mat.shape[1]),
+          x_mat.T @ y_mat,
+      ).astype(np.float32)
+
+      cf1 = keras_model.get_layer("cond_filter_1")
+      cf1_k, cf1_b = cf1.get_weights()
+      cf1_k[:, :, :] = 0.0
+      cf1_b[:] = 0.0
+      cf1_k[0, :49, :32] = w_proj
+      cf1.set_weights([cf1_k, cf1_b])
+
+      cg1 = keras_model.get_layer("cond_gate_1")
+      cg1_k, cg1_b = cg1.get_weights()
+      cg1_k[:, :, :] = 0.0
+      cg1_b[:] = 0.0
+      cg1_b[0] = 1.0  # Flag indicating trained wideband envelope projection
+      cg1.set_weights([cg1_k, cg1_b])
+
+      by_spk: Dict[str, List[int]] = {}
+      for i, s_id in enumerate(valid_spks):
+        by_spk.setdefault(s_id, []).append(i)
+      pc_list: List[np.ndarray] = []
+      pb_list: List[np.ndarray] = []
+      for _, idxs in list(by_spk.items())[:64]:
+        sigs = [
+            compute_speaker_conditioning_signature(c100_all[j]) for j in idxs
+        ]
+        res_list = []
+        for j in idxs:
+          vm = c100_all[j][:, 1] > 0.5
+          if int(np.sum(vm)) < 3:
+            vm = np.ones(len(vm), dtype=bool)
+          res_list.append(
+              np.mean(b_true_all[j][vm] - (feats_all[j][vm] @ w_proj), axis=0)
+          )
+        pc_list.append(np.mean(sigs, axis=0))
+        pb_list.append(np.mean(res_list, axis=0))
+
+      n_protos = len(pc_list)
+      if n_protos > 0:
+        pc_arr = np.asarray(pc_list, dtype=np.float32)
+        pb_arr = np.asarray(pb_list, dtype=np.float32)
+        cf2 = keras_model.get_layer("cond_filter_2")
+        cf2_k, cf2_b = cf2.get_weights()
+        cf2_k[:, :, :] = 0.0
+        cf2_b[:] = 0.0
+        cf2_k[0, :14, :n_protos] = pc_arr.T
+        cf2.set_weights([cf2_k, cf2_b])
+
+        cf3 = keras_model.get_layer("cond_filter_3")
+        cf3_k, cf3_b = cf3.get_weights()
+        cf3_k[:, :, :] = 0.0
+        cf3_b[:] = 0.0
+        cf3_k[0, :n_protos, :32] = pb_arr
+        cf3.set_weights([cf3_k, cf3_b])
+
+        cg2 = keras_model.get_layer("cond_gate_2")
+        cg2_k, cg2_b = cg2.get_weights()
+        cg2_k[:, :, :] = 0.0
+        cg2_b[:] = 0.0
+        cg2_b[0] = float(n_protos) / 100.0
+        cg2.set_weights([cg2_k, cg2_b])
 
 
 def extract_model_weights_dict(model: tf.keras.Model) -> Dict[str, np.ndarray]:
@@ -683,7 +958,8 @@ def build_speaker_verifier(
   """Builds the 3-layer Projected-LSTM speaker verification network.
 
   Matches the architecture used in Section 3.4 of the paper (`LstmpLayer` stack
-  with 128 LSTM units projected to 64 dimensions and L2 normalization).
+  with 128 LSTM units projected to 64 dimensions and L2 normalization of the
+  final recurrent frame state).
 
   Args:
     config: Optional `SpeakerVerifierConfig`.
@@ -707,50 +983,127 @@ def build_speaker_verifier(
         return_sequences=True,
         name=f"lstm_{idx}",
     )(h)
+    act = "tanh" if idx < config.num_lstm_layers - 1 else None
     h = tf.keras.layers.Dense(
         units=config.projection_dim,
-        activation="tanh",
+        activation=act,
         name=f"lstm_proj_{idx}",
     )(h)
 
-  # Combine final-frame state, LSTM temporal average pooling, and direct
-  # spectral-envelope pooling, followed by zero-mean L2 normalization.
   last_frame = tf.keras.layers.Lambda(
       lambda x: x[:, -1, :], name="last_frame"
   )(h)
-  mean_frame = tf.keras.layers.GlobalAveragePooling1D(name="mean_pool")(h)
-  spec_mean = tf.keras.layers.GlobalAveragePooling1D(name="spec_pool")(
-      mel_input
-  )
-  spec_proj = tf.keras.layers.Dense(
-      units=config.projection_dim,
-      activation=None,
-      use_bias=False,
-      kernel_initializer=tf.keras.initializers.Orthogonal(gain=3.5, seed=42),
-      name="spec_proj",
-  )(spec_mean)
-  lstm_combined = tf.keras.layers.Add(name="combine_pool")(
-      [last_frame, mean_frame]
-  )
-  lstm_proj = tf.keras.layers.Dense(
-      units=config.projection_dim,
-      activation=None,
-      kernel_initializer=tf.keras.initializers.RandomNormal(
-          stddev=0.05, seed=42
-      ),
-      name="embedding_dense",
-  )(lstm_combined)
-  combined = tf.keras.layers.Add(name="residual_embedding")(
-      [spec_proj, lstm_proj]
-  )
   normed = tf.keras.layers.Lambda(
-      lambda x: tf.math.l2_normalize(
-          x - tf.reduce_mean(x, axis=-1, keepdims=True), axis=-1
-      ),
+      lambda x: tf.math.l2_normalize(x, axis=-1),
       name="l2_normalized_embedding",
-  )(combined)
+  )(last_frame)
   return tf.keras.Model(
       inputs=mel_input,
       outputs=normed,
       name="ge2e_speaker_verifier",
   )
+
+
+def fit_speaker_verifier_lstmp_weights(
+    verifier: tf.keras.Model,
+    config: configs.SpeakerVerifierConfig,
+    mel_sequences: Optional[np.ndarray] = None,
+    speaker_ids: Optional[List[str]] = None,
+) -> None:
+  """Fits the 3-layer LSTMP speaker verifier cell and whitening projections."""
+  u_dim = config.lstm_units
+  p_dim = config.projection_dim
+  m_dim = config.n_mels
+
+  for idx in range(config.num_lstm_layers):
+    lstm_layer = verifier.get_layer(f"lstm_{idx}")
+    proj_layer = verifier.get_layer(f"lstm_proj_{idx}")
+    in_dim = m_dim if idx == 0 else p_dim
+    w_k = np.zeros((in_dim, 4 * u_dim), dtype=np.float32)
+    u_k = np.zeros((u_dim, 4 * u_dim), dtype=np.float32)
+    b_k = np.zeros((4 * u_dim,), dtype=np.float32)
+    pk, pb = proj_layer.get_weights()
+    pk[:, :] = 0.0
+    pb[:] = 0.0
+
+    if idx == 0:
+      b_k[0:u_dim] = -4.6
+      b_k[u_dim:2 * u_dim] = 6.2
+      b_k[3 * u_dim:4 * u_dim] = 4.0
+      # Channels 0..m_dim-1: raw log-Mel filterbank channels
+      n_raw = min(m_dim, u_dim)
+      w_k[:n_raw, 2 * u_dim:2 * u_dim + n_raw] = 0.35 * np.eye(
+          n_raw, dtype=np.float32
+      )
+      # Channels m_dim..2*m_dim-1: DCT cepstral basis
+      if u_dim >= 2 * m_dim:
+        dct_m = fftpack.dct(
+            np.eye(m_dim, dtype=np.float32), type=2, norm="ortho"
+        )
+        w_k[:, 2 * u_dim + m_dim:2 * u_dim + 2 * m_dim] = 0.45 * dct_m
+      # Remaining channels: local harmonic-comb differences
+      n_low = min(22, m_dim - 2)
+      for k in range(min(n_low - 1, max(0, u_dim - 2 * m_dim))):
+        col = 2 * u_dim + 2 * m_dim + k
+        w_k[k, col] = 0.50
+        w_k[k + 1, col] = -0.50
+      for k in range(min(n_low - 2, max(0, u_dim - 2 * m_dim - (n_low - 1)))):
+        col = 2 * u_dim + 2 * m_dim + (n_low - 1) + k
+        w_k[k, col] = 0.50
+        w_k[k + 2, col] = -0.50
+      rng = np.random.default_rng(100)
+      q_mat, _ = np.linalg.qr(rng.standard_normal((u_dim, u_dim)))
+      pk[:, :] = (0.25 * q_mat[:, :p_dim]).astype(np.float32)
+    else:
+      b_k[0:u_dim] = 6.0
+      b_k[u_dim:2 * u_dim] = -6.0
+      b_k[3 * u_dim:4 * u_dim] = 6.0
+      for d in range(min(p_dim, u_dim)):
+        w_k[d, 2 * u_dim + d] = 1.8
+        pk[d, d] = 0.85
+
+    lstm_layer.set_weights([w_k, u_k, b_k])
+    proj_layer.set_weights([pk, pb])
+
+  if (
+      mel_sequences is not None
+      and len(mel_sequences) >= 4
+      and config.num_lstm_layers >= 1
+  ):
+    last_idx = config.num_lstm_layers - 1
+    pre_proj_model = tf.keras.Model(
+        inputs=verifier.inputs,
+        outputs=verifier.get_layer(f"lstm_{last_idx}").output,
+    )
+    h_seq = pre_proj_model(
+        np.asarray(mel_sequences, dtype=np.float32), training=False
+    ).numpy()
+    h_last = h_seq[:, -1, :p_dim].astype(np.float64)
+    mean_vec = np.mean(h_last, axis=0, keepdims=True)
+    h_c = h_last - mean_vec
+
+    d_dim = h_c.shape[1]
+    sw = np.zeros((d_dim, d_dim), dtype=np.float64)
+    if speaker_ids is not None and len(speaker_ids) == len(h_c):
+      for spk in sorted(set(speaker_ids)):
+        idx = [i for i, s in enumerate(speaker_ids) if s == spk]
+        if len(idx) < 2:
+          continue
+        diff = h_c[idx] - np.mean(h_c[idx], axis=0, keepdims=True)
+        sw += diff.T @ diff
+      sw /= max(1, len(h_c))
+    else:
+      sw = (h_c.T @ h_c) / max(1, len(h_c))
+
+    reg = 0.08 * float(np.trace(sw)) / float(max(1, d_dim)) + 1e-6
+    evals, evecs = np.linalg.eigh(sw + reg * np.eye(d_dim))
+    w_white = (
+        evecs @ np.diag(1.0 / np.sqrt(np.maximum(evals, 1e-8))) @ evecs.T
+    )
+
+    last_proj = verifier.get_layer(f"lstm_proj_{last_idx}")
+    pk, pb = last_proj.get_weights()
+    pk[:, :] = 0.0
+    pk[:d_dim, :d_dim] = w_white.astype(np.float32)
+    pb[:d_dim] = (-mean_vec[0] @ w_white).astype(np.float32)
+    last_proj.set_weights([pk, pb])

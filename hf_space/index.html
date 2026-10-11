@@ -153,9 +153,10 @@
       <h1>WaveNet Based Low Rate Speech Coding</h1>
       <p style="color: var(--muted); margin: 4px 0;">
         <strong>This is not an officially supported Google product.</strong>
-        Interactive browser studio for Closed-Loop WaveNet Waveform Coding (WW) and
+        Interactive comparison studio for Closed-Loop WaveNet Waveform Coding (WW) and
         2.4 kb/s Codec 2 Conditioned Parametric WaveNet Coding (W_wo, W_w) with
-        implicit 8 kHz &rarr; 16 kHz bandwidth extension on real LibriSpeech test utterances.
+        implicit 4&ndash;8 kHz bandwidth extension on real LibriSpeech test utterances
+        (run <code>python3 hf_space/app.py</code> locally for live Gradio encoding).
       </p>
     </header>
 
@@ -181,13 +182,13 @@
           <option value="w_w">WaveNet Parametric (W_w, 2.4 kb/s Speaker-Overlapping)</option>
           <option value="w_wo">WaveNet Parametric (W_wo, 2.4 kb/s Speaker-Disjoint)</option>
           <option value="ww">WaveNet Waveform Coder (WW, Closed-Loop Arithmetic)</option>
-          <option value="amr">AMR-WB Baseline (23.85 kb/s Wideband)</option>
+          <option value="amr">AMR-WB Baseline (23.05 kb/s Wideband)</option>
           <option value="melp">MELP Baseline (2.4 kb/s Narrow-Band)</option>
           <option value="codec2">Codec 2 Sinusoidal Baseline (2.4 kb/s Narrow-Band)</option>
           <option value="speex">Speex CELP Baseline (2.15 kb/s Narrow-Band)</option>
         </select>
 
-        <button class="primary" id="runBtn">Encode, Synthesize &amp; Play Decoded 16 kHz Audio</button>
+        <button class="primary" id="runBtn">Play Selected Codec Output (16 kHz)</button>
         <button id="playRefBtn" style="margin-top:8px; cursor:pointer;">Play Reference 16 kHz Utterance</button>
 
         <div class="audio-group">
@@ -219,27 +220,35 @@
 
         <div class="metrics-row">
           <div class="metric-box">
-            <div class="val" id="mRate">2.40 kb/s</div>
+            <div class="val" id="mRate">—</div>
             <div class="lbl">Bitrate</div>
           </div>
           <div class="metric-box">
-            <div class="val" id="mEntropy">5.74 b/s</div>
+            <div class="val" id="mEntropy">—</div>
             <div class="lbl">Mean Entropy H_bar (Eq. 4)</div>
           </div>
           <div class="metric-box">
-            <div class="val" id="mCrossEntropy">5.29 b/s</div>
+            <div class="val" id="mCrossEntropy">—</div>
             <div class="lbl">Cross-Entropy R (Eq. 5)</div>
           </div>
           <div class="metric-box">
-            <div class="val" id="mMos">3.360</div>
-            <div class="lbl">Objective MOS-LQO</div>
+            <div class="val" id="mPesq">—</div>
+            <div class="lbl">PESQ-WB (P.862.2)</div>
           </div>
           <div class="metric-box">
-            <div class="val" id="mLsd">3.07 dB</div>
+            <div class="val" id="mStoi">—</div>
+            <div class="lbl">STOI Intelligibility</div>
+          </div>
+          <div class="metric-box">
+            <div class="val" id="mMos">—</div>
+            <div class="lbl">Composite MOS-LQO</div>
+          </div>
+          <div class="metric-box">
+            <div class="val" id="mLsd">—</div>
             <div class="lbl">Log-Spectral Distance</div>
           </div>
           <div class="metric-box">
-            <div class="val" id="mHighBand">1.97%</div>
+            <div class="val" id="mHighBand">—</div>
             <div class="lbl">4-8 kHz High-Band Energy</div>
           </div>
         </div>
@@ -255,13 +264,26 @@
       const wCtx = wCanvas.getContext("2d");
       wCtx.clearRect(0, 0, wCanvas.width, wCanvas.height);
 
+      let maxAmp = 0.12;
+      if (refSig) {
+        for (let i = 0; i < refSig.length; i++) {
+          if (Math.abs(refSig[i]) > maxAmp) maxAmp = Math.abs(refSig[i]);
+        }
+      }
+      if (recSig) {
+        for (let i = 0; i < recSig.length; i++) {
+          if (Math.abs(recSig[i]) > maxAmp) maxAmp = Math.abs(recSig[i]);
+        }
+      }
+      const ampScale = 0.44 / Math.max(maxAmp, 1e-4);
+
       if (refSig && refSig.length > 0) {
         wCtx.strokeStyle = "rgba(148, 163, 184, 0.45)";
         wCtx.lineWidth = 1.1;
         wCtx.beginPath();
         for (let x = 0; x < wCanvas.width; x++) {
           const idx = Math.floor((x / wCanvas.width) * refSig.length);
-          const y = (0.5 - 0.44 * refSig[idx]) * wCanvas.height;
+          const y = (0.5 - ampScale * refSig[idx]) * wCanvas.height;
           if (x === 0) wCtx.moveTo(x, y); else wCtx.lineTo(x, y);
         }
         wCtx.stroke();
@@ -273,7 +295,7 @@
         wCtx.beginPath();
         for (let x = 0; x < wCanvas.width; x++) {
           const idx = Math.floor((x / wCanvas.width) * recSig.length);
-          const y = (0.5 - 0.44 * recSig[idx]) * wCanvas.height;
+          const y = (0.5 - ampScale * recSig[idx]) * wCanvas.height;
           if (x === 0) wCtx.moveTo(x, y); else wCtx.lineTo(x, y);
         }
         wCtx.stroke();
@@ -308,6 +330,8 @@
       document.getElementById("mRate").textContent = codecInfo.rate_kbps;
       document.getElementById("mEntropy").textContent = codecInfo.h_bar;
       document.getElementById("mCrossEntropy").textContent = codecInfo.r_ce;
+      document.getElementById("mPesq").textContent = codecInfo.pesq_wb || "—";
+      document.getElementById("mStoi").textContent = codecInfo.stoi || "—";
       document.getElementById("mMos").textContent = codecInfo.mos;
       document.getElementById("mLsd").textContent = codecInfo.lsd_db;
       document.getElementById("mHighBand").textContent = codecInfo.high_band_pct;

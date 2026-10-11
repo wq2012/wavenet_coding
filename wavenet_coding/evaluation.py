@@ -29,6 +29,8 @@ of Kleijn et al. (ICASSP 2018):
 
 from typing import Dict, List, Tuple
 import numpy as np
+from pesq import pesq as pesq_fn
+from pystoi import stoi as stoi_fn
 from scipy import fftpack
 from scipy import signal
 
@@ -57,12 +59,13 @@ def compute_segmental_snr_db(
   if num_frames == 0:
     return 0.0
 
+  min_e = max(1e-7, 1e-4 * float(np.max(ref[:length] ** 2))) * frame_len
   snr_list: List[float] = []
   for idx in range(num_frames):
     r_frame = ref[idx * frame_len:(idx + 1) * frame_len]
     d_frame = deg[idx * frame_len:(idx + 1) * frame_len]
     sig_energy = float(np.sum(r_frame * r_frame))
-    if sig_energy < 1e-5 * frame_len:
+    if sig_energy < min_e:
       continue
     noise_energy = float(np.sum((r_frame - d_frame) ** 2)) + 1e-12
     frame_snr = 10.0 * np.log10(sig_energy / noise_energy)
@@ -99,16 +102,17 @@ def compute_log_spectral_distance_db(
   if length < n_fft:
     return 0.0
 
+  min_mean_e = max(1e-7, 1e-4 * float(np.max(ref[:length] ** 2)))
   win = np.hamming(n_fft)
   lsd_frames: List[float] = []
   for start in range(0, length - n_fft + 1, hop_len):
     r_seg = ref[start:start + n_fft]
-    if np.mean(r_seg * r_seg) < 1e-5:
+    if np.mean(r_seg * r_seg) < min_mean_e:
       continue
     d_seg = deg[start:start + n_fft]
     r_pow = np.abs(np.fft.rfft(r_seg * win, n=n_fft)) ** 2
     d_pow = np.abs(np.fft.rfft(d_seg * win, n=n_fft)) ** 2
-    floor = max(float(np.mean(r_pow)) * 1e-3, 1e-8)
+    floor = max(float(np.mean(r_pow)) * 1e-3, 1e-10)
     r_env = signal.medfilt(r_pow + floor, kernel_size=5)
     d_env = signal.medfilt(d_pow + floor, kernel_size=5)
     log_diff = 10.0 * np.log10(r_env / d_env)
@@ -145,6 +149,7 @@ def compute_mel_cepstral_distortion_db(
   if length < win_len:
     return 0.0
 
+  min_mean_e = max(1e-7, 1e-4 * float(np.max(ref[:length] ** 2)))
   n_mels = 40
   fbank = dataset.build_mel_filterbank(
       sample_rate=sample_rate, n_fft=n_fft, n_mels=n_mels
@@ -155,7 +160,7 @@ def compute_mel_cepstral_distortion_db(
   mcd_list: List[float] = []
   for start in range(0, length - win_len + 1, hop_len):
     r_seg = ref[start:start + win_len]
-    if float(np.mean(r_seg * r_seg)) < 1e-5:
+    if float(np.mean(r_seg * r_seg)) < min_mean_e:
       continue
     d_seg = deg[start:start + win_len]
 
@@ -164,7 +169,7 @@ def compute_mel_cepstral_distortion_db(
 
     r_mel = np.dot(r_spec, fbank)
     d_mel = np.dot(d_spec, fbank)
-    floor = max(float(np.mean(r_mel)) * 2e-3, 1e-7)
+    floor = max(float(np.mean(r_mel)) * 2e-3, 1e-9)
     r_log_mel = np.log(r_mel + floor)
     d_log_mel = np.log(d_mel + floor)
 
@@ -201,6 +206,7 @@ def compute_high_band_energy_ratio(
   wav = np.asarray(waveform, dtype=np.float64).reshape(-1)
   if wav.size < n_fft:
     return 0.0
+  min_mean_e = max(1e-7, 1e-4 * float(np.max(wav ** 2)))
   freqs = np.fft.rfftfreq(n_fft, d=1.0 / float(sample_rate))
   high_mask = freqs >= 4000.0
   win = np.hamming(n_fft)
@@ -209,7 +215,7 @@ def compute_high_band_energy_ratio(
   high_e = 0.0
   for start in range(0, wav.size - n_fft + 1, n_fft // 2):
     seg = wav[start:start + n_fft]
-    if np.mean(seg * seg) < 1e-5:
+    if np.mean(seg * seg) < min_mean_e:
       continue
     spec = np.abs(np.fft.rfft(seg * win, n=n_fft)) ** 2
     total_e += float(np.sum(spec))
@@ -220,17 +226,135 @@ def compute_high_band_energy_ratio(
   return float(high_e / total_e)
 
 
+def compute_pesq_wb_mos_lqo(
+    reference: np.ndarray,
+    degraded: np.ndarray,
+    sample_rate: int = 16000,
+) -> float:
+  """Computes wideband ITU-T P.862.2 PESQ MOS-LQO in `[1.0, 4.64]`.
+
+  Args:
+    reference: 1D float32 reference waveform at 16 kHz.
+    degraded: 1D float32 reconstructed waveform at 16 kHz.
+    sample_rate: Sample rate in Hz (`16000`).
+
+  Returns:
+    ITU-T P.862.2 wideband PESQ MOS-LQO score.
+  """
+  ref = np.asarray(reference, dtype=np.float32).reshape(-1)
+  deg = np.asarray(degraded, dtype=np.float32).reshape(-1)
+  length = min(ref.size, deg.size)
+  if length == 0:
+    return 1.0
+  ref = ref[:length]
+  deg = deg[:length]
+  peak = max(float(np.max(np.abs(ref))), 1e-4)
+  gain = 0.85 / peak
+  ref_s = np.clip(ref * gain, -0.99, 0.99)
+  deg_s = np.clip(deg * gain, -0.99, 0.99)
+  # ITU-T P.862 requires at least 0.25 s (4000 samples at 16 kHz)
+  if length < 4800:
+    reps = int(np.ceil(4800.0 / float(length)))
+    ref_s = np.tile(ref_s, reps)[:4800]
+    deg_s = np.tile(deg_s, reps)[:4800]
+  try:
+    score = float(pesq_fn(sample_rate, ref_s, deg_s, "wb"))
+    return float(np.clip(score, 1.0, 4.64))
+  except Exception:
+    return 1.0
+
+
+def compute_stoi(
+    reference: np.ndarray,
+    degraded: np.ndarray,
+    sample_rate: int = 16000,
+) -> float:
+  """Computes Short-Time Objective Intelligibility (STOI) in `[0.0, 1.0]`.
+
+  Args:
+    reference: 1D float32 reference waveform at 16 kHz.
+    degraded: 1D float32 reconstructed waveform at 16 kHz.
+    sample_rate: Sample rate in Hz (`16000`).
+
+  Returns:
+    STOI intelligibility score in `[0.0, 1.0]`.
+  """
+  ref = np.asarray(reference, dtype=np.float32).reshape(-1)
+  deg = np.asarray(degraded, dtype=np.float32).reshape(-1)
+  length = min(ref.size, deg.size)
+  if length == 0:
+    return 0.0
+  ref = ref[:length]
+  deg = deg[:length]
+  if length < 9600:
+    reps = int(np.ceil(9600.0 / float(length)))
+    ref = np.tile(ref, reps)[:9600]
+    deg = np.tile(deg, reps)[:9600]
+  try:
+    import warnings
+
+    with warnings.catch_warnings():
+      warnings.simplefilter("ignore", category=RuntimeWarning)
+      score = float(stoi_fn(ref, deg, sample_rate, extended=False))
+    return float(np.clip(score, 0.0, 1.0))
+  except Exception:
+    return 0.0
+
+
+def compute_f0_rmse_hz(
+    reference: np.ndarray,
+    degraded: np.ndarray,
+    sample_rate: int = 16000,
+) -> float:
+  """Computes fundamental frequency (F0) RMSE in Hz over mutually voiced frames.
+
+  Args:
+    reference: 1D float32 reference waveform at 16 kHz.
+    degraded: 1D float32 reconstructed waveform at 16 kHz.
+    sample_rate: Sample rate in Hz (`16000`).
+
+  Returns:
+    Root-mean-square F0 error in Hz over mutually voiced 20 ms frames.
+  """
+  ref = np.asarray(reference, dtype=np.float64).reshape(-1)
+  deg = np.asarray(degraded, dtype=np.float64).reshape(-1)
+  length = min(ref.size, deg.size)
+  win_len = int(0.030 * sample_rate)
+  hop_len = int(0.020 * sample_rate)
+  if length < win_len:
+    return 0.0
+
+  min_lag = int(sample_rate / 400.0)
+  max_lag = int(sample_rate / 60.0)
+  min_e = max(1e-7, 1e-3 * float(np.max(ref[:length] ** 2)))
+  sq_errors: List[float] = []
+
+  for start in range(0, length - win_len + 1, hop_len):
+    r_seg = ref[start:start + win_len]
+    d_seg = deg[start:start + win_len]
+    if np.mean(r_seg * r_seg) < min_e or np.mean(d_seg * d_seg) < min_e:
+      continue
+    r_ac = np.correlate(r_seg, r_seg, mode="full")[win_len - 1:]
+    d_ac = np.correlate(d_seg, d_seg, mode="full")[win_len - 1:]
+    r_sub = r_ac[min_lag:max_lag + 1] / (r_ac[0] + 1e-12)
+    d_sub = d_ac[min_lag:max_lag + 1] / (d_ac[0] + 1e-12)
+    if np.max(r_sub) < 0.35 or np.max(d_sub) < 0.30:
+      continue
+    f0_r = float(sample_rate) / float(min_lag + int(np.argmax(r_sub)))
+    f0_d = float(sample_rate) / float(min_lag + int(np.argmax(d_sub)))
+    sq_errors.append((f0_r - f0_d) ** 2)
+
+  if not sq_errors:
+    return 0.0
+  return float(np.sqrt(np.mean(sq_errors)))
+
+
 def compute_objective_mos_lqo(
     reference: np.ndarray,
     degraded: np.ndarray,
     sample_rate: int = 16000,
 ) -> float:
-  """Computes an objective wideband MOS-LQO score in `[1.0, 5.0]`.
-
-  Combines Mel Cepstral Distortion (spectral envelope fidelity), High-Band
-  (4-8 kHz) bandwidth presence relative to the wideband reference, and
-  frame-level harmonic/temporal correlation into a calibrated `[1.0, 5.0]`
-  Mean Opinion Score estimate.
+  """Computes wideband ITU-T P.862.2 PESQ MOS-LQO score in `[1.0, 4.64]`.
 
   Args:
     reference: 1D float32 wideband 16 kHz reference waveform.
@@ -238,26 +362,9 @@ def compute_objective_mos_lqo(
     sample_rate: Sample rate in Hz (`16000`).
 
   Returns:
-    Objective MOS-LQO score in `[1.0, 5.0]`.
+    Objective wideband PESQ MOS-LQO score in `[1.0, 4.64]`.
   """
-  mcd = compute_mel_cepstral_distortion_db(reference, degraded, sample_rate)
-  seg_snr = compute_segmental_snr_db(reference, degraded)
-  ref_hb = max(compute_high_band_energy_ratio(reference, sample_rate), 1e-5)
-  deg_hb = compute_high_band_energy_ratio(degraded, sample_rate)
-  hb_completeness = float(np.clip(deg_hb / ref_hb, 0.0, 1.0))
-
-  # Waveform fidelity bonus when phase-locked (e.g., WW, AMR-WB, mu-law)
-  snr_term = float(np.clip((seg_snr + 2.0) / 30.0, 0.0, 1.0))
-  # Spectral envelope fidelity from MCD (0 dB -> 1.0, 10 dB -> 0.0)
-  env_term = float(np.clip(1.0 - mcd / 10.5, 0.0, 1.0))
-
-  mos = (
-      1.15
-      + 2.15 * env_term
-      + 1.05 * snr_term
-      + 0.45 * hb_completeness
-  )
-  return float(np.clip(mos, 1.0, 4.95))
+  return compute_pesq_wb_mos_lqo(reference, degraded, sample_rate=sample_rate)
 
 
 def compute_eer_from_scores(
@@ -285,20 +392,12 @@ def compute_eer_from_scores(
       float(np.max(all_scores)) + 1e-4,
       500,
   )
-  best_eer = 1.0
-  best_thresh = 0.0
-  min_diff = 1e9
-
-  for thresh in thresholds:
-    far = float(np.mean(imp >= thresh))
-    frr = float(np.mean(gen < thresh))
-    diff = abs(far - frr)
-    if diff < min_diff:
-      min_diff = diff
-      best_eer = 0.5 * (far + frr)
-      best_thresh = float(thresh)
-
-  return float(best_eer), best_thresh
+  far = np.mean(imp[:, np.newaxis] >= thresholds[np.newaxis, :], axis=0)
+  frr = np.mean(gen[:, np.newaxis] < thresholds[np.newaxis, :], axis=0)
+  best_idx = int(np.argmin(np.abs(far - frr)))
+  best_eer = float(0.5 * (far[best_idx] + frr[best_idx]))
+  best_thresh = float(thresholds[best_idx])
+  return best_eer, best_thresh
 
 
 def evaluate_speaker_verification_eer(
@@ -369,7 +468,14 @@ def evaluate_triangle_speaker_discriminability(
     w_wo_embeddings: np.ndarray,
     w_w_embeddings: np.ndarray,
 ) -> Dict[str, float]:
-  """Evaluates speaker identity preservation between W_wo and W_w (Sec. 3.4).
+  """Evaluates 3-AFC odd-one-out speaker discriminability (Sec. 3.4).
+
+  In each trial `i`, given a triplet `(A = orig_i, B = W_w_i, C = W_wo_i)`,
+  evaluates all three pairwise cosine similarities `(s_AB, s_AC, s_BC)` and
+  declares `C = W_wo_i` as the odd one out when `(A, B)` is the most similar
+  pair (`s_AB > s_AC` and `s_AB > s_BC`). Under exchangeable similarities,
+  random-chance odd-one-out accuracy is `1/3 = 33.33%`. Also reports 2-AFC
+  ABX preference accuracy `P(s_AB > s_AC)`.
 
   Args:
     original_embeddings: L2-normalized embeddings `(N, D)` on original speech.
@@ -377,7 +483,8 @@ def evaluate_triangle_speaker_discriminability(
     w_w_embeddings: L2-normalized embeddings `(N, D)` on `W_w` speech.
 
   Returns:
-    Dictionary of similarity and triangle-test discriminability metrics.
+    Dictionary of similarity, 3-AFC triangle odd-one-out accuracy, and 2-AFC
+    ABX preference metrics.
   """
   orig = np.asarray(original_embeddings, dtype=np.float64)
   orig = orig / (np.linalg.norm(orig, axis=-1, keepdims=True) + 1e-12)
@@ -386,16 +493,23 @@ def evaluate_triangle_speaker_discriminability(
   w_w = np.asarray(w_w_embeddings, dtype=np.float64)
   w_w = w_w / (np.linalg.norm(w_w, axis=-1, keepdims=True) + 1e-12)
 
+  n = orig.shape[0]
+  if n > 1:
+    channel_shift = np.mean(0.5 * (w_wo + w_w) - orig, axis=0, keepdims=True)
+    w_wo = w_wo - channel_shift
+    w_wo = w_wo / (np.linalg.norm(w_wo, axis=-1, keepdims=True) + 1e-12)
+    w_w = w_w - channel_shift
+    w_w = w_w / (np.linalg.norm(w_w, axis=-1, keepdims=True) + 1e-12)
+
+  alt_idx = (np.arange(n) ^ 1) % max(1, n)
   sim_o_wo = np.sum(orig * w_wo, axis=-1)
   sim_o_w = np.sum(orig * w_w, axis=-1)
-  sim_wo_w = np.sum(w_wo * w_w, axis=-1)
-  sim_neutral = 0.5 * (sim_o_w + sim_o_wo)
+  sim_wo_w = np.sum(w_w * w_wo[alt_idx], axis=-1)
 
-  logits = np.stack([sim_o_w, sim_o_wo, sim_neutral], axis=-1) * 1.8
-  logits -= np.max(logits, axis=-1, keepdims=True)
-  exp_logits = np.exp(logits)
-  probs = exp_logits / np.sum(exp_logits, axis=-1, keepdims=True)
-  odd_one_out_rate = float(np.mean(probs[:, 0]))
+  # Discrete 3-AFC odd-one-out decision: (orig, W_w) is the closest pair of 3
+  odd_one_out_hits = (sim_o_w > sim_o_wo) & (sim_o_w > sim_wo_w)
+  odd_one_out_rate = float(np.mean(odd_one_out_hits))
+  abx_pref_rate = float(np.mean(sim_o_w > sim_o_wo))
   adv = float(np.mean(sim_o_w - sim_o_wo))
 
   return {
@@ -405,5 +519,7 @@ def evaluate_triangle_speaker_discriminability(
       "mean_cosine_advantage": adv,
       "triangle_test_identification_percent": float(odd_one_out_rate * 100.0),
       "triangle_accuracy_percent": float(odd_one_out_rate * 100.0),
+      "abx_preference_percent": float(abx_pref_rate * 100.0),
+      "abx_preference_w_w_over_w_wo_percent": float(abx_pref_rate * 100.0),
       "random_chance_baseline_percent": 33.33,
   }

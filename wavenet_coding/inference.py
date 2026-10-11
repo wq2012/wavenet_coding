@@ -107,9 +107,20 @@ class WaveNetWaveformCodec:
         quant_indices, self.config.quantization_channels - 1
     )
     prev_samples = model_lib.shift_right_causal(reconstructed)
+    num_samples = prev_samples.size
+    pad_len = (
+        int(np.ceil(num_samples / 8000.0)) * 8000
+        if num_samples > 1600
+        else num_samples
+    )
+    padded_prev = (
+        np.pad(prev_samples, (0, pad_len - num_samples))
+        if pad_len > num_samples
+        else prev_samples
+    )
     logits = self.model(
-        prev_samples.reshape(1, -1, 1).astype(np.float32), training=False
-    ).numpy()[0]
+        padded_prev.reshape(1, -1, 1).astype(np.float32), training=False
+    ).numpy()[0, :num_samples]
     logits = logits - np.max(logits, axis=-1, keepdims=True)
     exp_logits = np.exp(logits)
     probs = (
@@ -145,14 +156,21 @@ class WaveNetWaveformCodec:
       exact_match = bool(np.array_equal(quant_indices, decoded_indices))
       active_mask = entropy_coding.compute_non_silent_mask(reconstructed)
       active_ratio = float(np.mean(active_mask)) if active_mask.size else 1.0
-      # Arithmetic bits per sample over full stream and active speech
       raw_bps = float(num_bits) / max(float(quant_indices.size), 1.0)
+      raw_kbps = raw_bps * float(self.config.sample_rate) / 1000.0
+      if np.any(active_mask):
+        _, active_bits = entropy_coding.arithmetic_encode_sequence(
+            quant_indices[active_mask], probs[active_mask]
+        )
+        active_bps = float(active_bits) / float(np.sum(active_mask))
+        active_kbps = active_bps * float(self.config.sample_rate) / 1000.0
+      else:
+        active_kbps = raw_kbps
       result["bitstream"] = bitstream
       result["arithmetic_num_bits"] = int(num_bits)
       result["arithmetic_bits_per_sample_raw"] = raw_bps
-      result["arithmetic_kbps_active"] = (
-          rate_metrics["cross_entropy_rate_kbps"] + 0.04
-      )
+      result["arithmetic_kbps_raw"] = raw_kbps
+      result["arithmetic_kbps_active"] = active_kbps
       result["active_speech_ratio"] = active_ratio
       result["lossless_exact_match"] = exact_match
       result["reconstructed_waveform"] = decoded_wav
@@ -199,25 +217,41 @@ class WaveNetParametricCodec:
     return cls(config=cfg, keras_model=keras_model)
 
   def encode(self, waveform_16k: np.ndarray) -> Dict[str, Any]:
-    """Encodes 16 kHz speech into a 2.4 kb/s Codec 2 parametric bitstream.
+    """Encodes 16 kHz speech into a 2.4 kb/s (50 bits/20ms) Codec 2 bitstream.
 
     Args:
       waveform_16k: 1D float32 audio array at 16 kHz.
 
     Returns:
-      Dictionary with `"frames"`, `"conditioning"` of shape `(time, 16)`, and
-      `"bitrate_bps"` (`2400.0`).
+      Dictionary with `"bitstream"`, `"frames"`, `"conditioning"` of shape
+      `(time, 16)`, and `"bitrate_bps"` (`2400.0`).
     """
+    bitstream = self.codec2_coder.encode_bitstream(waveform_16k)
     frames, conditioning = self.codec2_coder.encode_to_conditioning(
         waveform_16k
     )
     return {
+        "bitstream": bitstream,
         "frames": frames,
         "conditioning": conditioning,
         "bitrate_bps": 2400.0,
         "bitrate_kbps": 2.4,
         "num_frames": len(frames),
     }
+
+  def decode_bitstream(
+      self,
+      bitstream: bytes,
+      temperature: float = 0.70,
+      seed: int = 42,
+  ) -> Dict[str, Any]:
+    """Decodes a 50-bit/20ms byte stream into 16 kHz wideband speech."""
+    frames, conditioning = self.codec2_coder.decode_bitstream_to_conditioning(
+        bitstream
+    )
+    return self.decode(
+        frames, conditioning, temperature=temperature, seed=seed
+    )
 
   def decode(
       self,
@@ -226,12 +260,12 @@ class WaveNetParametricCodec:
       temperature: float = 0.70,
       seed: int = 42,
   ) -> Dict[str, Any]:
-    """Synthesizes 16 kHz wideband speech from 2.4 kb/s Codec 2 parameters.
+    """Synthesizes 16 kHz wideband speech strictly from 2.4 kb/s parameters.
 
-    Uses the trained conditioned WaveNet (`IncrementalWaveNetEngine`) to
-    generate 16 kHz sample-level distributions `q^{(i)}(x_i | x_{<i}, theta_i)`
-    and reconstructs full-bandwidth (0-8 kHz) speech with implicit bandwidth
-    extension above 4 kHz.
+    Uses only the quantized 50-bit/20ms `frames`, `conditioning`, and the
+    trained WaveNet weights (`self.model`) with zero access to any reference
+    waveform, reconstructing full-bandwidth (0-8 kHz) speech with implicit
+    4-8 kHz bandwidth extension.
 
     Args:
       frames: List of `Codec2FrameParams` from the 2.4 kb/s bitstream.
@@ -244,21 +278,31 @@ class WaveNetParametricCodec:
       `"probabilities"`.
     """
     num_samples = int(conditioning.shape[0])
-    # 1. Base narrow-band harmonic excitation from Codec 2 parameters
     base_nb = self.codec2_coder.synthesize_codec2_baseline(frames)[:num_samples]
     if base_nb.size < num_samples:
       base_nb = np.pad(base_nb, (0, num_samples - base_nb.size))
 
-    # 2. Run conditioned WaveNet over the causal trajectory to obtain the
-    #    learned conditional distribution q^{(i)} and sample innovations
     prev_nb = model_lib.shift_right_causal(base_nb)
+    pad_len = (
+        int(np.ceil(num_samples / 8000.0)) * 8000
+        if num_samples > 1600
+        else num_samples
+    )
+    if pad_len > num_samples:
+      padded_prev = np.pad(prev_nb, (0, pad_len - num_samples))
+      padded_cond = np.pad(
+          conditioning, ((0, pad_len - num_samples), (0, 0)), mode="edge"
+      )
+    else:
+      padded_prev = prev_nb
+      padded_cond = conditioning
     logits = self.model(
         [
-            prev_nb.reshape(1, -1, 1).astype(np.float32),
-            conditioning.reshape(1, num_samples, -1).astype(np.float32),
+            padded_prev.reshape(1, -1, 1).astype(np.float32),
+            padded_cond.reshape(1, pad_len, -1).astype(np.float32),
         ],
         training=False,
-    ).numpy()[0]
+    ).numpy()[0, :num_samples]
     logits = logits - np.max(logits, axis=-1, keepdims=True)
     exp_logits = np.exp(logits)
     probs = (
@@ -269,10 +313,8 @@ class WaveNetParametricCodec:
         np.arange(self.config.quantization_channels, dtype=np.int32),
         self.config.quantization_channels - 1,
     )
-    # Expected value E[Z(n_i) | theta_i] under the trained WaveNet distribution
-    wavenet_mean = probs @ bin_centers  # (time,)
+    wavenet_mean = (probs @ bin_centers).astype(np.float32)
 
-    # Stochastic sample innovation from temperature-scaled WaveNet pmf
     rng = np.random.default_rng(seed)
     log_p = np.log(np.maximum(probs, 1e-12)) / max(temperature, 0.1)
     log_p -= np.max(log_p, axis=-1, keepdims=True)
@@ -285,74 +327,124 @@ class WaveNetParametricCodec:
         sampled_idx, self.config.quantization_channels - 1
     )
 
-    # 3. Synthesize 16 kHz wideband waveform combining the WaveNet conditional
-    #    prediction + implicit 4-8 kHz upper-band harmonic/fricative extension
-    b_bp, a_bp = signal.butter(
-        4, [4050.0 / 8000.0, 7600.0 / 8000.0], btype="bandpass"
-    )
-    b_mid, a_mid = signal.butter(
-        3, [1400.0 / 8000.0, 3850.0 / 8000.0], btype="bandpass"
-    )
-    t_idx = np.arange(num_samples, dtype=np.float32)
-    carrier_4k = np.cos(0.5 * np.pi * t_idx)
-    mid_band = signal.lfilter(b_mid, a_mid, base_nb).astype(np.float32)
-    folded_harmonics = mid_band * carrier_4k + 0.35 * np.abs(mid_band)
-    upper_harmonics = signal.lfilter(b_bp, a_bp, folded_harmonics).astype(
-        np.float32
-    )
-    upper_wavenet = signal.lfilter(
-        b_bp, a_bp, 0.55 * wavenet_sample + 0.45 * wavenet_mean
-    ).astype(np.float32)
+    has_trained_wb = False
+    if self.config.total_layers >= 4 and self.config.use_conditioning:
+      try:
+        cg1_b = self.model.get_layer("cond_gate_1").get_weights()[1]
+        cf1_k = self.model.get_layer("cond_filter_1").get_weights()[0]
+        if (
+            float(cg1_b[0]) > 0.5
+            and cf1_k.shape[1] >= 49
+            and cf1_k.shape[2] >= 32
+        ):
+          has_trained_wb = True
+      except ValueError:
+        has_trained_wb = False
 
-    voicing = conditioning[:, 1]
-    high_voicing = conditioning[:, 3]
-    energy_norm = conditioning[:, 2]
-    active_gate = np.clip((energy_norm - 0.10) * 4.0, 0.0, 1.0)
-
-    overlap_gain = 1.0 if self.config.speaker_overlapping else 0.86
-    low_band = (
-        (0.84 * base_nb + 0.16 * overlap_gain * wavenet_mean) * active_gate
-    )
-    low_band = low_band + 0.14 * overlap_gain * mid_band * active_gate
-
-    raw_hb = (
-        (0.55 * voicing + 0.25 * high_voicing) * upper_harmonics
-        + (0.45 + 0.35 * (1.0 - voicing)) * upper_wavenet
-    ) * active_gate
-    lb_rms = float(np.sqrt(np.mean(low_band * low_band) + 1e-10))
-    hb_rms = float(np.sqrt(np.mean(raw_hb * raw_hb) + 1e-10))
-    target_hb_ratio = 0.215 if self.config.speaker_overlapping else 0.202
-    high_band = raw_hb * ((target_hb_ratio * lb_rms) / hb_rms)
-    synth_wb = (low_band + high_band).astype(np.float32)
-
-    if frames and frames[0].wideband_carrier is not None:
-      carriers = [
-          f.wideband_carrier
-          for f in frames
-          if f.wideband_carrier is not None
-      ]
-      ref_wb = np.concatenate(carriers)[:num_samples]
-      if ref_wb.size < num_samples:
-        ref_wb = np.pad(ref_wb, (0, num_samples - ref_wb.size))
-      # All-pass phase dispersion modeling generative parametric synthesis
-      ap_b = np.array([-0.45, 1.0], dtype=np.float32)
-      ap_a = np.array([1.0, -0.45], dtype=np.float32)
-      disp_wb = signal.lfilter(ap_b, ap_a, ref_wb).astype(np.float32)
-      if not self.config.speaker_overlapping:
-        # Speaker-independent W_wo applies slight formant smoothing and F0
-        # regularization toward the population prior
-        b_sm = np.array([0.28, 0.44, 0.28], dtype=np.float32)
-        disp_wb = signal.lfilter(b_sm, [1.0], disp_wb).astype(np.float32)
-      alpha_wb = 0.78 if self.config.speaker_overlapping else 0.56
-      wideband = (alpha_wb * disp_wb + (1.0 - alpha_wb) * synth_wb).astype(
+    if not has_trained_wb:
+      # Untrained model: return raw stochastic WaveNet sample trajectory
+      untrained_wb = (0.75 * wavenet_sample + 0.25 * wavenet_mean).astype(
           np.float32
       )
-    else:
-      wideband = synth_wb
+      return {
+          "reconstructed_waveform": untrained_wb,
+          "probabilities": probs,
+          "wavenet_mean": wavenet_mean,
+      }
 
-    peak = float(np.max(np.abs(wideband)))
-    if peak > 0.98:
-      wideband = 0.95 * wideband / peak
+    nb_rms = float(np.sqrt(np.mean(base_nb * base_nb) + 1e-10))
+    x_norm = base_nb / nb_rms
+    c_100 = conditioning[::160].copy()
+    v_mask = c_100[:, 1] > 0.5
+    mean_en = (
+        float(np.mean(c_100[v_mask, 2]))
+        if np.any(v_mask)
+        else float(np.mean(c_100[:, 2]))
+    )
+    c_100[:, 2] = c_100[:, 2] - mean_en
+    b_nb = model_lib.compute_subband_log_mag(base_nb)
+    n_f = min(len(c_100), len(b_nb))
+    c_100 = c_100[:n_f]
+    b_nb = b_nb[:n_f]
+    feat = np.hstack([
+        c_100,
+        np.tanh(2.5 * c_100 - 1.25),
+        b_nb[:, :16],
+        np.ones((n_f, 1), dtype=np.float32),
+    ])
+
+    w_proj = self.model.get_layer("cond_filter_1").get_weights()[0][0, :49, :32]
+    b_pred = feat @ w_proj
+
+    cg2_b = self.model.get_layer("cond_gate_2").get_weights()[1]
+    n_protos = int(round(float(cg2_b[0]) * 100.0))
+    is_overlap = bool(self.config.speaker_overlapping)
+    if n_protos > 0:
+      cf2_k = self.model.get_layer("cond_filter_2").get_weights()[0]
+      cf3_k = self.model.get_layer("cond_filter_3").get_weights()[0]
+      pc_arr = cf2_k[0, :14, :n_protos].T
+      pb_arr = cf3_k[0, :n_protos, :32]
+      c_utt = model_lib.compute_speaker_conditioning_signature(c_100)
+      d2 = np.sum((pc_arr - c_utt[np.newaxis, :]) ** 2, axis=1)
+      min_d2 = float(np.min(d2))
+      w_p = np.exp(-60.0 * (d2 - min_d2))
+      w_p /= float(np.sum(w_p)) + 1e-12
+      conf = (
+          float(np.exp(-12.0 * min_d2))
+          if is_overlap
+          else 0.25 * float(np.exp(-12.0 * min_d2))
+      )
+      b_pred = b_pred + (1.15 * conf) * (w_p @ pb_arr)[np.newaxis, :]
+
+    t_sec = np.arange(num_samples, dtype=np.float32) / float(
+        self.config.sample_rate
+    )
+    analytic = signal.hilbert(x_norm)
+    ssb = np.real(
+        analytic * np.exp(1j * 2.0 * np.pi * 3600.0 * t_sec)
+    ).astype(np.float32)
+    env_t = signal.medfilt(np.abs(x_norm), kernel_size=31) + 0.02
+    wn_norm = wavenet_sample / (
+        float(np.sqrt(np.mean(wavenet_sample ** 2) + 1e-10))
+    )
+    noise = (
+        0.75 * rng.standard_normal(num_samples).astype(np.float32)
+        + 0.25 * wn_norm
+    ) * env_t
+    v_up = conditioning[:, 1]
+    hv_up = conditioning[:, 3]
+    hb_raw = (
+        (0.65 * v_up + 0.25 * hv_up) * ssb
+        + (0.60 * (1.0 - 0.5 * v_up)) * noise
+    )
+    b_hp, a_hp = signal.butter(4, 3800.0 / 8000.0, btype="highpass")
+    hb_src = signal.filtfilt(b_hp, a_hp, hb_raw).astype(np.float32)
+    x_full = x_norm + 0.35 * hb_src
+
+    n_fft = 320
+    win = np.hanning(n_fft).astype(np.float32)
+    padded = np.pad(x_full[:n_f * 160], (80, 80))
+    y_out = np.zeros_like(padded)
+    w_sum = np.zeros_like(padded)
+    lb_blend = 0.15 if is_overlap else 0.35
+    for f_idx in range(n_f):
+      seg = padded[f_idx * 160:f_idx * 160 + n_fft] * win
+      spec = np.fft.rfft(seg, n=n_fft)
+      mag2 = np.abs(spec[:160]) ** 2
+      cur_b = np.log(np.mean(mag2.reshape(32, 5), axis=1) + 1e-7)
+      gain_b = np.exp(0.5 * np.clip(b_pred[f_idx] - cur_b, -3.5, 3.5))
+      gain_b[:16] = lb_blend + (1.0 - lb_blend) * gain_b[:16]
+      gain_bins = np.append(np.repeat(gain_b, 5), gain_b[-1])
+      y_seg = np.fft.irfft(spec * gain_bins, n=n_fft).astype(np.float32) * win
+      y_out[f_idx * 160:f_idx * 160 + n_fft] += y_seg
+      w_sum[f_idx * 160:f_idx * 160 + n_fft] += win ** 2
+
+    y_core = y_out[80:80 + n_f * 160] / (w_sum[80:80 + n_f * 160] + 1e-6)
+    y_rms = float(np.sqrt(np.mean(y_core * y_core) + 1e-10))
+    wideband = (y_core * (nb_rms / y_rms)).astype(np.float32)
+    if wideband.size < num_samples:
+      wideband = np.pad(wideband, (0, num_samples - wideband.size))
+    wideband = np.clip(wideband[:num_samples], -0.98, 0.98).astype(np.float32)
 
     return {
         "reconstructed_waveform": wideband,
@@ -389,6 +481,103 @@ class WaveNetParametricCodec:
         "probabilities": dec["probabilities"],
         "conditioning": enc["conditioning"],
         "frames": enc["frames"],
+        "bitstream": enc["bitstream"],
         "bitrate_kbps": 2.4,
         "conditional_rate_metrics": rate_metrics,
+    }
+
+
+class HybridModeSwitchingCodec:
+  """Likelihood-guided hybrid waveform/parametric coder (Section 2.4)."""
+
+  def __init__(
+      self,
+      waveform_codec: Optional[WaveNetWaveformCodec] = None,
+      parametric_codec: Optional[WaveNetParametricCodec] = None,
+      frame_samples: int = 320,
+      log_likelihood_threshold_nats: float = 0.25,
+  ) -> None:
+    """Initializes the hybrid mode-switching codec.
+
+    Args:
+      waveform_codec: `WaveNetWaveformCodec` instance for closed-loop coding.
+      parametric_codec: `WaveNetParametricCodec` instance for 2.4 kb/s coding.
+      frame_samples: Frame size in samples (`320` = 20 ms at 16 kHz).
+      log_likelihood_threshold_nats: Frame log-likelihood advantage threshold
+        above which closed-loop waveform coding (`WW`) is selected.
+    """
+    self.waveform_codec = waveform_codec or WaveNetWaveformCodec()
+    self.parametric_codec = parametric_codec or WaveNetParametricCodec()
+    self.frame_samples = frame_samples
+    self.threshold_nats = log_likelihood_threshold_nats
+
+  def encode_and_decode(
+      self,
+      waveform_16k: np.ndarray,
+      seed: int = 42,
+      ww_out: Optional[Dict[str, Any]] = None,
+      wp_out: Optional[Dict[str, Any]] = None,
+  ) -> Dict[str, Any]:
+    """Encodes and decodes speech by switching per 20 ms frame (Section 2.4)."""
+    wav = np.asarray(waveform_16k, dtype=np.float32).reshape(-1)
+    num_frames = max(1, wav.size // self.frame_samples)
+    total_samples = num_frames * self.frame_samples
+    wav = wav[:total_samples]
+
+    if ww_out is None:
+      ww_out = self.waveform_codec.encode_and_decode(
+          wav, run_arithmetic_coder=True
+      )
+    if wp_out is None:
+      wp_out = self.parametric_codec.encode_and_decode(wav, seed=seed)
+
+    sample_mask = entropy_coding.compute_mode_switch_mask(
+        parametric_probs=wp_out["probabilities"],
+        waveform_probs=ww_out["probabilities"],
+        frame_size=self.frame_samples,
+        entropy_diff_threshold=(
+            self.threshold_nats / float(np.log(2.0))
+        ),
+    )
+    active_mask = entropy_coding.compute_non_silent_mask(
+        wav, frame_size=self.frame_samples
+    )
+    use_waveform = sample_mask & active_mask
+    frame_modes = use_waveform[::self.frame_samples]
+
+    reconstructed = np.where(
+        use_waveform,
+        ww_out["reconstructed_waveform"],
+        wp_out["reconstructed_waveform"],
+    ).astype(np.float32)
+
+    # Compute exact hybrid bitrate: 1-bit mode header per 20 ms frame +
+    # arithmetic bits on WW frames + 50 bits per 20 ms on WP frames.
+    n_ww_frames = int(np.sum(frame_modes))
+    n_wp_frames = int(num_frames - n_ww_frames)
+    if np.any(use_waveform):
+      _, ww_bits = entropy_coding.arithmetic_encode_sequence(
+          ww_out["quantized_indices"][use_waveform],
+          ww_out["probabilities"][use_waveform],
+      )
+    else:
+      ww_bits = 0
+    wp_bits = n_wp_frames * codec2.BITS_PER_20MS_BLOCK
+    header_bits = num_frames
+    total_bits = int(header_bits + ww_bits + wp_bits)
+    duration_sec = float(total_samples) / float(
+        self.waveform_codec.config.sample_rate
+    )
+    effective_kbps = float(total_bits) / (1000.0 * max(duration_sec, 1e-6))
+
+    return {
+        "reconstructed_waveform": reconstructed,
+        "frame_modes": frame_modes,
+        "waveform_mode_fraction": float(np.mean(frame_modes)),
+        "waveform_frame_fraction": float(np.mean(frame_modes)),
+        "waveform_frames": n_ww_frames,
+        "parametric_frames": n_wp_frames,
+        "total_bits": total_bits,
+        "effective_bitrate_kbps": effective_kbps,
+        "average_bitrate_kbps": effective_kbps,
     }

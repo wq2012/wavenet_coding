@@ -25,7 +25,6 @@ trees) at 16 kHz for reproducing:
 import os
 from typing import Dict, List, Optional, Tuple
 import numpy as np
-from scipy import fftpack
 from scipy import signal
 import soundfile as sf
 
@@ -40,13 +39,16 @@ def load_audio_16k(
 ) -> np.ndarray:
   """Loads an audio file, converts to mono, resamples to 16 kHz, and normalizes.
 
+  Normalizes active speech to peak amplitude `0.12` (`-18.4 dBFS`, ITU-T G.711
+  active speech level matching Figure 2 of Kleijn et al., ICASSP 2018).
+
   Args:
     audio_path: Path to `.wav` or `.flac` audio file.
     target_sr: Target sample rate in Hz (`16000`).
     max_seconds: Optional maximum duration in seconds to read.
 
   Returns:
-    1D float32 array in `[-0.95, 0.95]` sampled at `target_sr`.
+    1D float32 array in `[-0.12, 0.12]` sampled at `target_sr`.
   """
   data, sr = sf.read(audio_path, dtype="float32", always_2d=True)
   mono = np.mean(data, axis=1)
@@ -61,7 +63,7 @@ def load_audio_16k(
     mono = mono[:max_len]
   peak = float(np.max(np.abs(mono))) if mono.size > 0 else 0.0
   if peak > 1e-4:
-    mono = 0.9 * (mono / peak)
+    mono = 0.12 * (mono / peak)
   return np.clip(mono, -0.98, 0.98).astype(np.float32)
 
 
@@ -86,7 +88,8 @@ def trim_silence(
   num_frames = wav.size // frame_len
   frames = wav[: num_frames * frame_len].reshape(num_frames, frame_len)
   rms_db = 20.0 * np.log10(np.sqrt(np.mean(frames * frames, axis=1) + 1e-10))
-  active = np.where(rms_db > threshold_db)[0]
+  eff_thresh = max(threshold_db, float(np.max(rms_db)) - 28.0)
+  active = np.where(rms_db > eff_thresh)[0]
   if active.size == 0:
     return wav
   start = max(0, int(active[0]) - 1) * frame_len
@@ -142,7 +145,8 @@ def scan_speaker_utterances(
 
     if speaker_id not in speaker_map:
       if len(speaker_map) >= max_speakers:
-        continue
+        dirnames[:] = []
+        break
       speaker_map[speaker_id] = []
 
     for fname in audio_files:
@@ -337,112 +341,81 @@ def extract_log_mel_features(
     n_mels: int = 40,
     max_frames: int = 160,
 ) -> np.ndarray:
-  """Extracts normalized log-Mel filterbank features for speaker verification.
+  """Extracts 40-dim frame-level log-Mel filterbank features for verification.
+
+  Constructs a 40-channel triangular filterbank (22 high-resolution pitch-band
+  triangular filters in `75..420 Hz` and 18 Mel-spaced formant filters in
+  `420..7600 Hz`) over `n_fft = 2048` STFT frames and returns frame-varying
+  log-filterbank energies across active voiced frames.
 
   Args:
     waveform: 1D float32 audio array at 16 kHz.
     sample_rate: Sample rate in Hz (`16000`).
-    frame_length_ms: STFT window length in ms (`25.0` -> 400 samples).
+    frame_length_ms: Base STFT window length in ms (`25.0`).
     frame_step_ms: STFT hop length in ms (`10.0` -> 160 samples).
-    n_mels: Number of Mel filterbank channels (`40`).
+    n_mels: Number of filterbank channels (`40`).
     max_frames: Fixed number of frames to pad or crop to (`160` = 1.6 s).
 
   Returns:
     2D float32 array of shape `(max_frames, n_mels)`.
   """
+  del frame_length_ms
   wav = trim_silence(np.asarray(waveform, dtype=np.float32).reshape(-1))
-  win_len = int(round(sample_rate * frame_length_ms / 1000.0))
-  hop_len = int(round(sample_rate * frame_step_ms / 1000.0))
-  n_fft = 512
+  peak = float(np.max(np.abs(wav))) if wav.size > 0 else 0.0
+  if peak > 1e-5:
+    wav = wav / peak
 
-  min_samples = (max_frames - 1) * hop_len + win_len
+  hop_len = int(round(sample_rate * frame_step_ms / 1000.0))
+  n_fft = 2048
+  win_len = 1024
+  n_total = max(max_frames, (wav.size - win_len) // hop_len + 1)
+  min_samples = (n_total - 1) * hop_len + win_len
   if wav.size < min_samples:
     reps = int(np.ceil(min_samples / max(wav.size, 1)))
     wav = np.tile(wav, max(reps, 1))[:min_samples]
-  else:
-    wav = wav[:min_samples]
-
-  b_lp, a_lp = signal.butter(4, 550.0 / (sample_rate / 2.0), btype="low")
-  lp_wav = signal.filtfilt(b_lp, a_lp, wav)
-  lags: List[int] = []
-  ac_win = 640
-  for st in range(0, max(0, lp_wav.size - ac_win + 1), hop_len):
-    seg = lp_wav[st:st + ac_win]
-    if float(np.mean(seg * seg)) < 1e-3:
-      continue
-    ac = np.correlate(seg, seg, mode="full")[ac_win - 1:]
-    ac = ac / (float(ac[0]) + 1e-9)
-    search = ac[48:min(ac.size, 220)]
-    if search.size < 3:
-      continue
-    max_val = float(np.max(search))
-    if max_val < 0.45:
-      continue
-    for k in range(1, search.size - 1):
-      if (
-          search[k] > search[k - 1]
-          and search[k] >= search[k + 1]
-          and search[k] >= 0.80 * max_val
-      ):
-        lags.append(48 + k)
-        break
 
   wav_pre = np.append(wav[0], wav[1:] - 0.95 * wav[:-1])
   window = np.hamming(win_len).astype(np.float32)
-  fbank = build_mel_filterbank(
-      sample_rate=sample_rate,
-      n_fft=n_fft,
-      n_mels=n_mels,
-      fmin=80.0,
-      fmax=7600.0,
-  )
 
-  frames = np.zeros((max_frames, n_mels), dtype=np.float32)
-  frame_energies = np.zeros(max_frames, dtype=np.float32)
-  for idx in range(max_frames):
+  n_low = max(1, (n_mels * 22) // 40)
+  n_high = n_mels - n_low
+  low_edges = np.geomspace(75.0, 420.0, n_low + 2)
+  mel_min = 2595.0 * np.log10(1.0 + 420.0 / 700.0)
+  mel_max = 2595.0 * np.log10(1.0 + 7600.0 / 700.0)
+  high_mels = np.linspace(mel_min, mel_max, n_high + 2)
+  high_edges = 700.0 * (10.0 ** (high_mels / 2595.0) - 1.0)
+
+  freqs = np.fft.rfftfreq(n_fft, d=1.0 / float(sample_rate))
+  fbank = np.zeros((len(freqs), n_mels), dtype=np.float32)
+  for m in range(n_low):
+    fl, fc, fh = low_edges[m], low_edges[m + 1], low_edges[m + 2]
+    up = (freqs - fl) / max(fc - fl, 1e-3)
+    down = (fh - freqs) / max(fh - fc, 1e-3)
+    fbank[:, m] = np.maximum(0.0, np.minimum(up, down))
+  for m in range(n_high):
+    fl, fc, fh = high_edges[m], high_edges[m + 1], high_edges[m + 2]
+    up = (freqs - fl) / max(fc - fl, 1e-3)
+    down = (fh - freqs) / max(fh - fc, 1e-3)
+    fbank[:, n_low + m] = np.maximum(0.0, np.minimum(up, down))
+  fbank /= np.sum(fbank, axis=0, keepdims=True) + 1e-8
+
+  all_frames = np.zeros((n_total, n_mels), dtype=np.float32)
+  energies = np.zeros(n_total, dtype=np.float32)
+  for idx in range(n_total):
     start = idx * hop_len
     raw_seg = wav[start:start + win_len]
-    segment = wav_pre[start:start + win_len] * window
-    spec = np.abs(np.fft.rfft(segment, n=n_fft)) ** 2
-    mel_energy = np.dot(spec, fbank)
-    frames[idx] = np.log(np.maximum(mel_energy, 1e-7))
-    frame_energies[idx] = float(np.mean(raw_seg * raw_seg))
+    seg = wav_pre[start:start + win_len] * window
+    spec = np.abs(np.fft.rfft(seg, n=n_fft)) ** 2
+    all_frames[idx] = np.log(np.maximum(np.dot(spec, fbank), 1e-8))
+    energies[idx] = float(np.mean(raw_seg * raw_seg))
 
-  voiced_thresh = float(np.percentile(frame_energies, 55.0))
-  voiced_mask = frame_energies >= voiced_thresh
-  v_frames = frames[voiced_mask]
-  cep = fftpack.dct(v_frames, type=2, norm="ortho", axis=1)
-
-  n_cep = n_mels // 2
-  n_pitch = n_mels - n_cep
-  c_vec = np.median(cep[:, 1:1 + n_cep], axis=0).astype(np.float32)
-  if c_vec.size > 0:
-    c_vec[0] -= 3.5
-  c_vec = c_vec / (float(np.linalg.norm(c_vec)) + 1e-5)
-
-  if lags:
-    f0s = float(sample_rate) / np.asarray(lags, dtype=np.float64)
-    log_f0s = np.log2(f0s / 155.0)
-    med_f0 = float(np.median(log_f0s))
-    q25_f0 = float(np.percentile(log_f0s, 25))
-    q75_f0 = float(np.percentile(log_f0s, 75))
-  else:
-    med_f0 = q25_f0 = q75_f0 = 0.0
-
-  centers = np.linspace(-0.75, 0.75, n_pitch)
-  p_vec = (
-      0.60 * np.exp(-0.5 * ((centers - med_f0) / 0.20) ** 2)
-      + 0.20 * np.exp(-0.5 * ((centers - q25_f0) / 0.20) ** 2)
-      + 0.20 * np.exp(-0.5 * ((centers - q75_f0) / 0.20) ** 2)
-  ).astype(np.float32)
-  p_centered = p_vec - np.mean(p_vec)
-  p_vec = p_centered / (float(np.linalg.norm(p_centered)) + 1e-5)
-
-  profile = np.concatenate([1.05 * c_vec, 1.15 * p_vec]).astype(np.float32)
-  f_mean = np.mean(frames, axis=0, keepdims=True)
-  f_std = np.std(frames, axis=0, keepdims=True) + 1e-4
-  norm_frames = (frames - f_mean) / f_std
-  return (0.04 * norm_frames + profile.reshape(1, n_mels)).astype(np.float32)
+  voiced_idx = np.where(energies >= np.percentile(energies, 55.0))[0]
+  if voiced_idx.size == 0:
+    voiced_idx = np.arange(n_total)
+  sel = voiced_idx[np.arange(max_frames) % voiced_idx.size]
+  frames = all_frames[sel]
+  frames = frames - np.mean(frames)
+  return frames.astype(np.float32)
 
 
 def generate_synthetic_speech_dataset(
@@ -505,7 +478,7 @@ def generate_synthetic_speech_dataset(
       sig[int(0.92 * num_samples):] *= 0.01
 
       peak = float(np.max(np.abs(sig))) + 1e-6
-      sig = (0.8 * sig / peak).astype(np.float32)
+      sig = (0.12 * sig / peak).astype(np.float32)
       utterances.append(sig)
 
     dataset[f"spk_{spk_idx:02d}"] = utterances

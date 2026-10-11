@@ -48,7 +48,8 @@ def compute_non_silent_mask(
   padded = np.pad(wav, (0, num_frames * frame_size - len(wav)))
   frames = padded.reshape(num_frames, frame_size)
   rms_db = 20.0 * np.log10(np.sqrt(np.mean(frames**2, axis=-1) + 1e-10))
-  active_frames = rms_db > threshold_db
+  eff_thresh = max(threshold_db, float(np.max(rms_db)) - 26.0)
+  active_frames = rms_db > eff_thresh
   if not np.any(active_frames):
     active_frames[:] = True
   sample_mask = np.repeat(active_frames, frame_size)[:len(wav)]
@@ -88,19 +89,28 @@ def _probs_to_cdf(
     total_freq: int = 65536,
 ) -> np.ndarray:
   """Converts a 1D probability vector into strictly increasing integer CDF."""
-  num_bins = len(probs_1d)
-  p = np.clip(np.asarray(probs_1d, dtype=np.float64), 1e-9, 1.0)
-  p /= np.sum(p)
+  return _probs_matrix_to_cdfs(
+      np.asarray(probs_1d, dtype=np.float64).reshape(1, -1),
+      total_freq=total_freq,
+  )[0]
+
+
+def _probs_matrix_to_cdfs(
+    probs_2d: np.ndarray,
+    total_freq: int = 65536,
+) -> np.ndarray:
+  """Converts a 2D (T, K) probability matrix into (T, K + 1) integer CDFs."""
+  p = np.clip(np.asarray(probs_2d, dtype=np.float64), 1e-9, 1.0)
+  p /= np.sum(p, axis=-1, keepdims=True)
+  num_steps, num_bins = p.shape
   alloc = total_freq - num_bins
-  freqs = np.ones(num_bins, dtype=np.int64) + np.floor(p * alloc).astype(
-      np.int64
-  )
-  diff = total_freq - int(np.sum(freqs))
-  if diff > 0:
-    freqs[int(np.argmax(p))] += diff
-  cdf = np.zeros(num_bins + 1, dtype=np.int64)
-  cdf[1:] = np.cumsum(freqs)
-  return cdf
+  freqs = 1 + np.floor(p * alloc).astype(np.int64)
+  diffs = total_freq - np.sum(freqs, axis=-1)
+  max_idx = np.argmax(p, axis=-1)
+  freqs[np.arange(num_steps), max_idx] += diffs
+  cdfs = np.zeros((num_steps, num_bins + 1), dtype=np.int64)
+  cdfs[:, 1:] = np.cumsum(freqs, axis=-1)
+  return cdfs
 
 
 def arithmetic_encode_sequence(
@@ -110,6 +120,11 @@ def arithmetic_encode_sequence(
   """Losslessly encodes quantization indices {n_i} using Arithmetic Coding."""
   seq = np.asarray(indices, dtype=np.int64).reshape(-1)
   probs = np.asarray(probs_seq, dtype=np.float64).reshape(len(seq), -1)
+  total = 65536
+  cdfs = _probs_matrix_to_cdfs(probs, total_freq=total)
+  t_idx = np.arange(len(seq))
+  c_low_list = cdfs[t_idx, seq].tolist()
+  c_high_list = cdfs[t_idx, seq + 1].tolist()
 
   state_bits = 32
   full = 1 << state_bits
@@ -125,16 +140,11 @@ def arithmetic_encode_sequence(
 
   def _emit_bit(bit: int, pending: int) -> None:
     out_bits.append(bit)
-    for _ in range(pending):
-      out_bits.append(1 - bit)
+    if pending:
+      out_bits.extend([1 - bit] * pending)
 
-  for t, sym in enumerate(seq):
-    cdf = _probs_to_cdf(probs[t])
-    total = int(cdf[-1])
+  for c_low, c_high in zip(c_low_list, c_high_list):
     span = high - low + 1
-    c_low = int(cdf[sym])
-    c_high = int(cdf[sym + 1])
-
     high = low + (span * c_high) // total - 1
     low = low + (span * c_low) // total
 
@@ -164,15 +174,11 @@ def arithmetic_encode_sequence(
 
   num_bits = len(out_bits)
   pad = (8 - (len(out_bits) % 8)) % 8
-  out_bits.extend([0] * pad)
-  byte_arr = bytearray()
-  for i in range(0, len(out_bits), 8):
-    byte_val = 0
-    for b in out_bits[i:i + 8]:
-      byte_val = (byte_val << 1) | b
-    byte_arr.append(byte_val)
-
-  return bytes(byte_arr), int(num_bits)
+  if pad:
+    out_bits.extend([0] * pad)
+  bits_arr = np.asarray(out_bits, dtype=np.uint8)
+  byte_arr = np.packbits(bits_arr).tobytes()
+  return byte_arr, int(num_bits)
 
 
 def arithmetic_decode_sequence(
@@ -182,11 +188,12 @@ def arithmetic_decode_sequence(
   """Losslessly decodes quantization indices {n_i} from Arithmetic Coding."""
   probs = np.asarray(probs_seq, dtype=np.float64)
   num_samples = int(probs.shape[0])
+  total = 65536
+  cdfs = _probs_matrix_to_cdfs(probs, total_freq=total)
 
-  in_bits = []
-  for byte_val in bitstream:
-    for shift in range(7, -1, -1):
-      in_bits.append((byte_val >> shift) & 1)
+  in_bits = np.unpackbits(
+      np.frombuffer(bitstream, dtype=np.uint8)
+  ).tolist()
 
   state_bits = 32
   full = 1 << state_bits
@@ -196,10 +203,11 @@ def arithmetic_decode_sequence(
   mask = full - 1
 
   bit_pos = 0
+  n_in_bits = len(in_bits)
 
   def _read_bit() -> int:
     nonlocal bit_pos
-    if bit_pos < len(in_bits):
+    if bit_pos < n_in_bits:
       val = in_bits[bit_pos]
       bit_pos += 1
       return val
@@ -212,14 +220,15 @@ def arithmetic_decode_sequence(
   low = 0
   high = mask
   decoded = np.zeros(num_samples, dtype=np.int32)
+  max_sym = cdfs.shape[1] - 2
 
   for t in range(num_samples):
-    cdf = _probs_to_cdf(probs[t])
-    total = int(cdf[-1])
+    cdf = cdfs[t]
     span = high - low + 1
     scaled_val = ((value - low + 1) * total - 1) // span
     sym = int(np.searchsorted(cdf[1:], scaled_val, side="right"))
-    sym = min(sym, len(cdf) - 2)
+    if sym > max_sym:
+      sym = max_sym
     decoded[t] = sym
 
     c_low = int(cdf[sym])

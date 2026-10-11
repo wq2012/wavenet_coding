@@ -115,7 +115,7 @@ def run_speech_coding_demo(
     kbps = 2.15
   else:
     rec = codec2.run_amr_wb_baseline(wav)[:wav.size]
-    kbps = 23.85
+    kbps = 23.05
 
   fig, axes = plt.subplots(2, 1, figsize=(8, 4.2), sharex=True)
   t_sec = np.arange(wav.size) / 16000.0
@@ -135,6 +135,10 @@ def run_speech_coding_demo(
   metrics: Dict[str, Any] = {
       "codec": codec_mode,
       "bitrate_kbps": round(float(kbps), 2),
+      "pesq_wb_mos_lqo": round(
+          evaluation.compute_pesq_wb_mos_lqo(wav, rec), 3
+      ),
+      "stoi": round(evaluation.compute_stoi(wav, rec), 3),
       "objective_mos_lqo": round(
           evaluation.compute_objective_mos_lqo(wav, rec), 3
       ),
@@ -184,7 +188,7 @@ def build_demo() -> gr.Blocks:
               "WaveNet Parametric (W_w, 2.4 kb/s Speaker-Overlapping)",
               "WaveNet Parametric (W_wo, 2.4 kb/s Speaker-Disjoint)",
               "WaveNet Waveform Coder (WW, Closed-Loop Arithmetic)",
-              "AMR-WB Baseline (23.85 kb/s Wideband)",
+              "AMR-WB Baseline (23.05 kb/s Wideband)",
               "MELP Baseline (2.4 kb/s Narrow-Band)",
               "Codec 2 Sinusoidal Baseline (2.4 kb/s Narrow-Band)",
               "Speex CELP Baseline (2.15 kb/s Narrow-Band)",
