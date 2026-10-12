@@ -6,71 +6,71 @@
   "training_audio_duration_sec": 325.12,
   "num_train_windows": 64,
   "num_eval_windows": 16,
-  "training_time_sec": 25.66,
+  "training_time_sec": 32.11,
   "initial_eval_bits_per_sample": 7.0186,
   "initial_eval_nll_nats_per_sample": 4.8649,
-  "final_eval_bits_per_sample": 4.2561,
-  "final_eval_nll_nats_per_sample": 2.9501,
+  "final_eval_bits_per_sample": 4.6636,
+  "final_eval_nll_nats_per_sample": 3.2326,
   "history": [
     {
       "epoch": 1,
-      "train_loss_bits_per_sample": 6.9295,
-      "eval_cross_entropy_bits_per_sample": 6.7548,
-      "eval_nll_nats_per_sample": 4.682
+      "train_loss_bits_per_sample": 7.6373,
+      "eval_cross_entropy_bits_per_sample": 7.6311,
+      "eval_nll_nats_per_sample": 5.2895
     },
     {
       "epoch": 2,
-      "train_loss_bits_per_sample": 6.1033,
-      "eval_cross_entropy_bits_per_sample": 5.7377,
-      "eval_nll_nats_per_sample": 3.9771
+      "train_loss_bits_per_sample": 6.901,
+      "eval_cross_entropy_bits_per_sample": 6.7631,
+      "eval_nll_nats_per_sample": 4.6878
     },
     {
       "epoch": 3,
-      "train_loss_bits_per_sample": 5.7087,
-      "eval_cross_entropy_bits_per_sample": 5.1983,
-      "eval_nll_nats_per_sample": 3.6032
+      "train_loss_bits_per_sample": 6.3978,
+      "eval_cross_entropy_bits_per_sample": 6.1484,
+      "eval_nll_nats_per_sample": 4.2617
     },
     {
       "epoch": 4,
-      "train_loss_bits_per_sample": 5.5141,
-      "eval_cross_entropy_bits_per_sample": 4.8799,
-      "eval_nll_nats_per_sample": 3.3825
+      "train_loss_bits_per_sample": 6.0563,
+      "eval_cross_entropy_bits_per_sample": 5.7142,
+      "eval_nll_nats_per_sample": 3.9608
     },
     {
       "epoch": 5,
-      "train_loss_bits_per_sample": 5.4215,
-      "eval_cross_entropy_bits_per_sample": 4.673,
-      "eval_nll_nats_per_sample": 3.2391
+      "train_loss_bits_per_sample": 5.8236,
+      "eval_cross_entropy_bits_per_sample": 5.4027,
+      "eval_nll_nats_per_sample": 3.7448
     },
     {
       "epoch": 6,
-      "train_loss_bits_per_sample": 5.3881,
-      "eval_cross_entropy_bits_per_sample": 4.5296,
-      "eval_nll_nats_per_sample": 3.1397
+      "train_loss_bits_per_sample": 5.6636,
+      "eval_cross_entropy_bits_per_sample": 5.1728,
+      "eval_nll_nats_per_sample": 3.5855
     },
     {
       "epoch": 7,
-      "train_loss_bits_per_sample": 5.3927,
-      "eval_cross_entropy_bits_per_sample": 4.4264,
-      "eval_nll_nats_per_sample": 3.0681
+      "train_loss_bits_per_sample": 5.5532,
+      "eval_cross_entropy_bits_per_sample": 4.9981,
+      "eval_nll_nats_per_sample": 3.4645
     },
     {
       "epoch": 8,
-      "train_loss_bits_per_sample": 5.4239,
-      "eval_cross_entropy_bits_per_sample": 4.3507,
-      "eval_nll_nats_per_sample": 3.0157
+      "train_loss_bits_per_sample": 5.4774,
+      "eval_cross_entropy_bits_per_sample": 4.8616,
+      "eval_nll_nats_per_sample": 3.3698
     },
     {
       "epoch": 9,
-      "train_loss_bits_per_sample": 5.4747,
-      "eval_cross_entropy_bits_per_sample": 4.2949,
-      "eval_nll_nats_per_sample": 2.977
+      "train_loss_bits_per_sample": 5.4268,
+      "eval_cross_entropy_bits_per_sample": 4.7525,
+      "eval_nll_nats_per_sample": 3.2942
     },
     {
       "epoch": 10,
-      "train_loss_bits_per_sample": 5.5406,
-      "eval_cross_entropy_bits_per_sample": 4.2561,
-      "eval_nll_nats_per_sample": 2.9501
+      "train_loss_bits_per_sample": 5.3953,
+      "eval_cross_entropy_bits_per_sample": 4.6636,
+      "eval_nll_nats_per_sample": 3.2326
     }
   ],
   "exported_files": {
@@ -79,10 +79,10 @@
     "saved_model_dir": "pretrained_models/wavenet_waveform_coder/saved_model",
     "tflite": {
       "fp32_path": "pretrained_models/wavenet_waveform_coder/model_fp32.tflite",
-      "fp32_size_bytes": 1112896,
+      "fp32_size_bytes": 1113236,
       "fp32_verified": true,
       "int8_path": "pretrained_models/wavenet_waveform_coder/model_int8.tflite",
-      "int8_size_bytes": 237136,
+      "int8_size_bytes": 237480,
       "int8_verified": true,
       "output_shape": [
         1,

@@ -6,71 +6,71 @@
   "training_audio_duration_sec": 325.12,
   "num_train_windows": 64,
   "num_eval_windows": 16,
-  "training_time_sec": 33.13,
+  "training_time_sec": 43.38,
   "initial_eval_bits_per_sample": 7.0186,
   "initial_eval_nll_nats_per_sample": 4.8649,
-  "final_eval_bits_per_sample": 4.3116,
-  "final_eval_nll_nats_per_sample": 2.9886,
+  "final_eval_bits_per_sample": 4.6137,
+  "final_eval_nll_nats_per_sample": 3.198,
   "history": [
     {
       "epoch": 1,
-      "train_loss_bits_per_sample": 6.933,
-      "eval_cross_entropy_bits_per_sample": 6.442,
-      "eval_nll_nats_per_sample": 4.4652
+      "train_loss_bits_per_sample": 7.6132,
+      "eval_cross_entropy_bits_per_sample": 7.6307,
+      "eval_nll_nats_per_sample": 5.2892
     },
     {
       "epoch": 2,
-      "train_loss_bits_per_sample": 6.1086,
-      "eval_cross_entropy_bits_per_sample": 5.5873,
-      "eval_nll_nats_per_sample": 3.8728
+      "train_loss_bits_per_sample": 6.8453,
+      "eval_cross_entropy_bits_per_sample": 6.7338,
+      "eval_nll_nats_per_sample": 4.6675
     },
     {
       "epoch": 3,
-      "train_loss_bits_per_sample": 5.7201,
-      "eval_cross_entropy_bits_per_sample": 5.1303,
-      "eval_nll_nats_per_sample": 3.556
+      "train_loss_bits_per_sample": 6.3316,
+      "eval_cross_entropy_bits_per_sample": 6.1021,
+      "eval_nll_nats_per_sample": 4.2296
     },
     {
       "epoch": 4,
-      "train_loss_bits_per_sample": 5.5334,
-      "eval_cross_entropy_bits_per_sample": 4.8543,
-      "eval_nll_nats_per_sample": 3.3648
+      "train_loss_bits_per_sample": 5.9938,
+      "eval_cross_entropy_bits_per_sample": 5.6591,
+      "eval_nll_nats_per_sample": 3.9226
     },
     {
       "epoch": 5,
-      "train_loss_bits_per_sample": 5.4497,
-      "eval_cross_entropy_bits_per_sample": 4.6726,
-      "eval_nll_nats_per_sample": 3.2388
+      "train_loss_bits_per_sample": 5.7737,
+      "eval_cross_entropy_bits_per_sample": 5.3437,
+      "eval_nll_nats_per_sample": 3.704
     },
     {
       "epoch": 6,
-      "train_loss_bits_per_sample": 5.4255,
-      "eval_cross_entropy_bits_per_sample": 4.5463,
-      "eval_nll_nats_per_sample": 3.1512
+      "train_loss_bits_per_sample": 5.6319,
+      "eval_cross_entropy_bits_per_sample": 5.1131,
+      "eval_nll_nats_per_sample": 3.5441
     },
     {
       "epoch": 7,
-      "train_loss_bits_per_sample": 5.4396,
-      "eval_cross_entropy_bits_per_sample": 4.4558,
-      "eval_nll_nats_per_sample": 3.0885
+      "train_loss_bits_per_sample": 5.5429,
+      "eval_cross_entropy_bits_per_sample": 4.9394,
+      "eval_nll_nats_per_sample": 3.4237
     },
     {
       "epoch": 8,
-      "train_loss_bits_per_sample": 5.4804,
-      "eval_cross_entropy_bits_per_sample": 4.3902,
-      "eval_nll_nats_per_sample": 3.043
+      "train_loss_bits_per_sample": 5.4906,
+      "eval_cross_entropy_bits_per_sample": 4.8051,
+      "eval_nll_nats_per_sample": 3.3306
     },
     {
       "epoch": 9,
-      "train_loss_bits_per_sample": 5.5408,
-      "eval_cross_entropy_bits_per_sample": 4.3427,
-      "eval_nll_nats_per_sample": 3.0101
+      "train_loss_bits_per_sample": 5.4648,
+      "eval_cross_entropy_bits_per_sample": 4.699,
+      "eval_nll_nats_per_sample": 3.2571
     },
     {
       "epoch": 10,
-      "train_loss_bits_per_sample": 5.6163,
-      "eval_cross_entropy_bits_per_sample": 4.3116,
-      "eval_nll_nats_per_sample": 2.9886
+      "train_loss_bits_per_sample": 5.4587,
+      "eval_cross_entropy_bits_per_sample": 4.6137,
+      "eval_nll_nats_per_sample": 3.198
     }
   ],
   "exported_files": {
@@ -79,10 +79,10 @@
     "saved_model_dir": "pretrained_models/wavenet_parametric_2400_speaker_independent/saved_model",
     "tflite": {
       "fp32_path": "pretrained_models/wavenet_parametric_2400_speaker_independent/model_fp32.tflite",
-      "fp32_size_bytes": 1652560,
+      "fp32_size_bytes": 1387744,
       "fp32_verified": true,
       "int8_path": "pretrained_models/wavenet_parametric_2400_speaker_independent/model_int8.tflite",
-      "int8_size_bytes": 507696,
+      "int8_size_bytes": 311520,
       "int8_verified": true,
       "output_shape": [
         1,

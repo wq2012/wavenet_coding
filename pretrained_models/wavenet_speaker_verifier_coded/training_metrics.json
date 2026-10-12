@@ -4,71 +4,71 @@
   "num_speakers": 40,
   "num_eval_utterances": 16,
   "training_audio_duration_sec": 347.84,
-  "training_time_sec": 193.47,
-  "initial_ge2e_loss": 3.2346,
-  "final_ge2e_loss": 0.5116,
-  "initial_eer_percent": 35.714,
-  "final_train_eer_percent": 10.457,
+  "training_time_sec": 199.09,
+  "initial_ge2e_loss": 2.9329,
+  "final_ge2e_loss": 0.4869,
+  "initial_eer_percent": 25.0,
+  "final_train_eer_percent": 11.23,
   "final_eer_percent": 12.5,
   "history": [
     {
       "epoch": 1,
-      "ge2e_loss": 1.2813,
-      "train_eer_percent": 17.885,
-      "eer_percent": 15.625
+      "ge2e_loss": 1.5517,
+      "train_eer_percent": 17.4,
+      "eer_percent": 27.679
     },
     {
       "epoch": 2,
-      "ge2e_loss": 0.8619,
-      "train_eer_percent": 14.107,
+      "ge2e_loss": 1.0617,
+      "train_eer_percent": 14.067,
       "eer_percent": 12.5
     },
     {
       "epoch": 3,
-      "ge2e_loss": 0.6671,
-      "train_eer_percent": 12.087,
-      "eer_percent": 12.054
+      "ge2e_loss": 0.7063,
+      "train_eer_percent": 11.843,
+      "eer_percent": 12.5
     },
     {
       "epoch": 4,
-      "ge2e_loss": 0.6349,
-      "train_eer_percent": 11.038,
+      "ge2e_loss": 0.6285,
+      "train_eer_percent": 11.947,
       "eer_percent": 12.5
     },
     {
       "epoch": 5,
-      "ge2e_loss": 0.5914,
-      "train_eer_percent": 10.801,
+      "ge2e_loss": 0.599,
+      "train_eer_percent": 11.378,
       "eer_percent": 12.5
     },
     {
       "epoch": 6,
-      "ge2e_loss": 0.6,
-      "train_eer_percent": 10.513,
+      "ge2e_loss": 0.5724,
+      "train_eer_percent": 11.222,
       "eer_percent": 12.5
     },
     {
       "epoch": 7,
-      "ge2e_loss": 0.6122,
-      "train_eer_percent": 10.469,
+      "ge2e_loss": 0.6371,
+      "train_eer_percent": 11.214,
       "eer_percent": 12.5
     },
     {
       "epoch": 8,
-      "ge2e_loss": 0.5693,
-      "train_eer_percent": 10.397,
+      "ge2e_loss": 0.5686,
+      "train_eer_percent": 11.21,
       "eer_percent": 12.5
     },
     {
       "epoch": 9,
-      "ge2e_loss": 0.5913,
-      "train_eer_percent": 10.441,
+      "ge2e_loss": 0.579,
+      "train_eer_percent": 11.282,
       "eer_percent": 12.5
     },
     {
       "epoch": 10,
-      "ge2e_loss": 0.5116,
-      "train_eer_percent": 10.457,
+      "ge2e_loss": 0.4869,
+      "train_eer_percent": 11.23,
       "eer_percent": 12.5
     }
   ],

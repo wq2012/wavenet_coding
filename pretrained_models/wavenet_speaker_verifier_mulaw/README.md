@@ -37,24 +37,24 @@ datasets:
 1. `model.safetensors`: Hugging Face SafeTensors FP32 weights.
 2. `config.json`: Complete model architecture specification (`num_lstm_layers=3`, `lstm_units=128`, `projection_dim=64`, `n_mels=40`).
 3. `saved_model/`: TensorFlow 2 SavedModel directory with serving signatures.
-4. `model_fp32.tflite` (`977,208` bytes) & `model_int8.tflite` (`528,032` bytes): Verified TensorFlow Lite flatbuffers.
+4. `model_fp32.tflite` (`1,157,512` bytes) & `model_int8.tflite` (`558,856` bytes): Verified TensorFlow Lite flatbuffers.
 5. `model_f16.gguf` & `model_q4_k_m.gguf`: Verified GGUF v3 binary files (`15` tensors) for C++/edge inference.
 6. `training_metrics.json` & `evaluation_metrics.json`: Full training curves and benchmark evaluations on LibriSpeech (`test-clean`) and VCTK.
 
 ## Training Progression (`training_metrics.json`)
 
-- **Training Corpus**: `32` speaker-disjoint training speakers (`160` utterances) from LibriSpeech `test-clean` + CSTR VCTK; evaluated on held-out speakers
-- **Wall-Clock Training Time**: `9.05 s` (`10` epochs)
-- **Initial GE2E Loss / Held-Out EER**: `0.9159` (`12.500%` eval EER, `15.469%` train EER)
-- **Final GE2E Loss / Held-Out EER**: **`0.1715`** (**`2.679%` eval EER**, `5.301%` train EER)
+- **Training Corpus**: `40` speakers (`160` training utterances + held-out utterances, `347.84 s` audio) from LibriSpeech `test-clean` + CSTR VCTK; evaluated on held-out speakers
+- **Wall-Clock Training Time**: `204.20 s` (`10` epochs)
+- **Initial GE2E Loss / Held-Out EER**: `2.7446` (`37.500%` eval EER, `15.461%` epoch-1 train EER)
+- **Final GE2E Loss / Held-Out EER**: **`0.1778`** (**`2.679%` eval EER**, `5.296%` train EER)
 
 ## Evaluation Results — Speaker Verification & Triangle Test (Section 3.4)
 
 | Benchmark / Dataset | 8-bit μ-law EER (%) [95% CI] | AMR-WB (23.05 kb/s) EER (%) [95% CI] | Parametric WaveNet `W_w` EER (%) [95% CI] | Parametric WaveNet `W_wo` EER (%) [95% CI] | 3-AFC Triangle Odd-One-Out (`W_wo` vs `33.33%` chance) |
 | :--- | :---: | :---: | :---: | :---: | :---: |
 | **Paper Reported (WSJ0, Sec. 3.4)** | 8.4% | — | — | 15.8% | **41.0%** |
-| **Reproduced — LibriSpeech (`test-clean`, 8 spk, 16 utt)** | **2.68%** [0.89%, 11.16%] | **12.05%** [2.23%, 20.55%] | **12.50%** [3.57%, 34.38%] | **12.50%** [3.57%, 36.63%] | **75.00%** (ABX `75.00%`) |
-| **Reproduced — VCTK Corpus (8 spk, 16 utt)** | **12.95%** [4.02%, 37.51%] | **13.84%** [2.67%, 29.48%] | **23.66%** [9.82%, 37.50%] | **23.66%** [12.50%, 37.06%] | **75.00%** (ABX `75.00%`) |
+| **Reproduced — LibriSpeech (`test-clean`, 8 spk, 16 utt)** | **12.50%** [1.34%, 22.32%] | **12.50%** [4.02%, 20.99%] | **13.84%** [4.90%, 37.50%] | **13.39%** [5.35%, 37.51%] | **75.00%** (ABX `75.00%`) |
+| **Reproduced — VCTK Corpus (8 spk, 16 utt)** | **22.32%** [4.01%, 34.84%] | **13.39%** [2.68%, 23.66%] | **26.79%** [12.50%, 42.86%] | **25.00%** [12.50%, 36.17%] | **75.00%** (ABX `75.00%`) |
 
 ## Usage Examples
 

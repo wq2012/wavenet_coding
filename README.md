@@ -18,9 +18,9 @@ Traditional speech coders fall into two families:
 2. **Parametric coders** (Sections 2.2 & 2.4): Extract compact vocal-tract, pitch, and energy parameters every 10–20 ms (e.g., **Codec 2** at **2.4 kb/s**) and synthesize a perceptually plausible waveform at the receiver.
 
 This package implements all four core components introduced in **Kleijn et al. (ICASSP 2018)**:
-- **Closed-Loop WaveNet Waveform Coding (`WW`, Section 2.3)**: Uses a causal dilated WaveNet (`q^(i)(x_i | x_0, ..., x_{i-1})`) inside a closed quantization loop over 256-level 8-bit μ-law samples (`n_i = Q(x_i)`), paired with a bit-exact 32-bit integer arithmetic coder to losslessly compress 16 kHz 8-bit μ-law speech from **128.00 kb/s** down to **81.99 kb/s** (`5.1243 bits/sample` active arithmetic coded bitrate on LibriSpeech `test-clean`) and **77.17 kb/s** (`4.8234 bits/sample` on VCTK), with a theoretical conditional entropy lower bound `H̄` of **78.77 kb/s** (`4.9232 bits/sample`) on LibriSpeech and **77.81 kb/s** (`4.8631 bits/sample`) on VCTK.
-- **Codec 2 Conditioned Parametric WaveNet Coding (`WP` / `W_wo` / `W_w`, Section 2.4)**: Encodes 16 kHz speech into a serialized **2.4 kb/s** bitstream (**43-bit** unquantized stream header + **50 bits per 20 ms block**: 36 bits LSP spectral envelope, 7 bits fundamental frequency F0, 5 bits energy, and 2 voicing flags; `36 + 7 + 5 + 2 = 50 bits / 20 ms`), unpacks the bitstream at the receiver with zero reference access, and synthesizes 16 kHz wideband speech with implicit 4–8 kHz bandwidth extension (`1.111%` high-band energy for `W_w` and `0.880%` for `W_wo` on LibriSpeech).
-- **Likelihood-Guided Mode Switching (`HybridModeSwitchingCodec`, Section 2.4)**: Dynamically switches between 2.4 kb/s parametric coding and closed-loop arithmetic waveform coding on 20 ms frames where the teacher-forced parametric negative log-likelihood exceeds a threshold (`3.304 kb/s` on LibriSpeech and `2.842 kb/s` on VCTK).
+- **Closed-Loop WaveNet Waveform Coding (`WW`, Section 2.3)**: Uses a causal dilated WaveNet (`q^(i)(x_i | x_0, ..., x_{i-1})`) inside a closed quantization loop over 256-level 8-bit μ-law samples (`n_i = Q(x_i)`), paired with a bit-exact 32-bit integer arithmetic coder to losslessly compress 16 kHz 8-bit μ-law speech from **128.00 kb/s** down to **85.12 kb/s** (`5.3199 bits/sample` active arithmetic coded bitrate on LibriSpeech `test-clean`, cross-entropy rate `R = 5.3453 bits/sample` / `85.52 kb/s`) and **83.94 kb/s** (`5.2461 bits/sample` on VCTK, cross-entropy rate `R = 5.2587 bits/sample` / `84.14 kb/s`), while the Codec 2 conditioned Parametric WaveNets achieve strictly lower conditional cross-entropy (`5.3071` / `5.1908 bits/sample` for `W_wo` and `5.3053` / `5.1820 bits/sample` for `W_w`).
+- **Codec 2 Conditioned Parametric WaveNet Coding (`WP` / `W_wo` / `W_w`, Section 2.4)**: Encodes 16 kHz speech into a serialized **2.4 kb/s** bitstream (**43-bit** unquantized stream header + **50 bits per 20 ms block**: 36 bits LSP spectral envelope, 7 bits fundamental frequency F0, 5 bits energy, and 2 voicing flags; `36 + 7 + 5 + 2 = 50 bits / 20 ms`), unpacks the bitstream at the receiver with zero reference access, and synthesizes 16 kHz wideband speech strictly in the time domain from the WaveNet μ-law distribution with implicit 4–8 kHz bandwidth extension (`0.119%` high-band energy for `W_w` and `0.070%` for `W_wo` on LibriSpeech vs. `0.018%–0.023%` for narrow-band baselines).
+- **Likelihood-Guided Mode Switching (`HybridModeSwitchingCodec`, Section 2.4)**: Dynamically switches between 2.4 kb/s parametric coding and closed-loop arithmetic waveform coding on 20 ms frames where the teacher-forced parametric negative log-likelihood exceeds a threshold (`8.423 kb/s` on LibriSpeech and `7.777 kb/s` on VCTK).
 - **GE2E Speaker Verification & Triangle Discriminability (`build_speaker_verifier`, Section 3.4)**: Implements the 3-layer Projected-LSTM (`LSTMP`) speaker embedding network (128 LSTM units projected to 64 dimensions per layer over 40-channel frame-level log-Mel filterbank features) trained with Generalized End-to-End (`GE2E`) softmax loss to evaluate speaker identity preservation across 8-bit μ-law speech, speaker-disjoint Parametric WaveNet (`W_wo`), and speaker-overlapping Parametric WaveNet (`W_w`).
 
 <p align="center">
@@ -35,11 +35,11 @@ All five pretrained models are trained on real multi-speaker LibriSpeech + VCTK 
 
 | Model Name | Hugging Face Repository | Task / Paper Section | Initial Eval Metric | Final Eval Metric | Exported Formats |
 | :--- | :--- | :--- | :---: | :---: | :--- |
-| **`wavenet_waveform_coder` (`WW`)** | [`wq2012/wavenet-waveform-coder`](https://huggingface.co/wq2012/wavenet-waveform-coder) | Closed-Loop Waveform Coder (Sec. 2.3 & 3.2) | 7.0186 bits/sample (4.8649 nats) | **4.2561 bits/sample** (2.9501 nats) | `.safetensors`, `saved_model/`, `.tflite` (FP32/INT8), `.gguf` (FP16/Q4_K_M) |
-| **`wavenet_parametric_2400_speaker_independent` (`W_wo`)** | [`wq2012/wavenet-parametric-2400-speaker-independent`](https://huggingface.co/wq2012/wavenet-parametric-2400-speaker-independent) | 2.4 kb/s Codec 2 Parametric WaveNet — Speaker-Disjoint (Sec. 2.4 & 3.3) | 7.0185 bits/sample (4.8648 nats) | **4.3116 bits/sample** (2.9886 nats) | `.safetensors`, `saved_model/`, `.tflite` (FP32/INT8), `.gguf` (FP16/Q4_K_M) |
-| **`wavenet_parametric_2400_speaker_overlapping` (`W_w`)** | [`wq2012/wavenet-parametric-2400-speaker-overlapping`](https://huggingface.co/wq2012/wavenet-parametric-2400-speaker-overlapping) | 2.4 kb/s Codec 2 Parametric WaveNet — Speaker-Overlapping (Sec. 3.3 & 3.4) | 7.0186 bits/sample (4.8650 nats) | **4.3116 bits/sample** (2.9886 nats, train: 4.1180) | `.safetensors`, `saved_model/`, `.tflite` (FP32/INT8), `.gguf` (FP16/Q4_K_M) |
-| **`wavenet_speaker_verifier_mulaw`** | [`wq2012/wavenet-speaker-verifier-mulaw`](https://huggingface.co/wq2012/wavenet-speaker-verifier-mulaw) | 3-Layer LSTMP GE2E Speaker Verifier on 8-bit μ-law Speech (Sec. 3.4) | 0.9159 GE2E loss (12.50% eval EER) | **0.1715 GE2E loss (2.68% eval EER)** | `.safetensors`, `saved_model/`, `.tflite` (FP32/INT8), `.gguf` (FP16/Q4_K_M) |
-| **`wavenet_speaker_verifier_coded`** | [`wq2012/wavenet-speaker-verifier-coded`](https://huggingface.co/wq2012/wavenet-speaker-verifier-coded) | 3-Layer LSTMP GE2E Speaker Verifier on 2.4 kb/s Coded Speech (Sec. 3.4) | 1.2813 GE2E loss (15.62% eval EER) | **0.5116 GE2E loss (12.50% eval EER)** | `.safetensors`, `saved_model/`, `.tflite` (FP32/INT8), `.gguf` (FP16/Q4_K_M) |
+| **`wavenet_waveform_coder` (`WW`)** | [`wq2012/wavenet-waveform-coder`](https://huggingface.co/wq2012/wavenet-waveform-coder) | Closed-Loop Waveform Coder (Sec. 2.3 & 3.2) | 7.0186 bits/sample (4.8649 nats) | **4.6636 bits/sample** (3.2326 nats) | `.safetensors`, `saved_model/`, `.tflite` (FP32/INT8), `.gguf` (FP16/Q4_K_M) |
+| **`wavenet_parametric_2400_speaker_independent` (`W_wo`)** | [`wq2012/wavenet-parametric-2400-speaker-independent`](https://huggingface.co/wq2012/wavenet-parametric-2400-speaker-independent) | 2.4 kb/s Codec 2 Parametric WaveNet — Speaker-Disjoint (Sec. 2.4 & 3.3) | 7.0186 bits/sample (4.8649 nats) | **4.6137 bits/sample** (3.1980 nats) | `.safetensors`, `saved_model/`, `.tflite` (FP32/INT8), `.gguf` (FP16/Q4_K_M) |
+| **`wavenet_parametric_2400_speaker_overlapping` (`W_w`)** | [`wq2012/wavenet-parametric-2400-speaker-overlapping`](https://huggingface.co/wq2012/wavenet-parametric-2400-speaker-overlapping) | 2.4 kb/s Codec 2 Parametric WaveNet — Speaker-Overlapping (Sec. 3.3 & 3.4) | 7.0186 bits/sample (4.8649 nats) | **4.6119 bits/sample** (3.1967 nats, train: 4.5170) | `.safetensors`, `saved_model/`, `.tflite` (FP32/INT8), `.gguf` (FP16/Q4_K_M) |
+| **`wavenet_speaker_verifier_mulaw`** | [`wq2012/wavenet-speaker-verifier-mulaw`](https://huggingface.co/wq2012/wavenet-speaker-verifier-mulaw) | 3-Layer LSTMP GE2E Speaker Verifier on 8-bit μ-law Speech (Sec. 3.4) | 2.7446 GE2E loss (37.50% eval EER) | **0.1778 GE2E loss (2.68% eval EER)** | `.safetensors`, `saved_model/`, `.tflite` (FP32/INT8), `.gguf` (FP16/Q4_K_M) |
+| **`wavenet_speaker_verifier_coded`** | [`wq2012/wavenet-speaker-verifier-coded`](https://huggingface.co/wq2012/wavenet-speaker-verifier-coded) | 3-Layer LSTMP GE2E Speaker Verifier on 2.4 kb/s Coded Speech (Sec. 3.4) | 2.9329 GE2E loss (25.00% eval EER) | **0.4869 GE2E loss (12.50% eval EER)** | `.safetensors`, `saved_model/`, `.tflite` (FP32/INT8), `.gguf` (FP16/Q4_K_M) |
 
 - **Interactive Demo Space**: [**`wq2012/wavenet-coding-demo`**](https://huggingface.co/spaces/wq2012/wavenet-coding-demo)
 
@@ -55,13 +55,13 @@ In Section 3.2 of the paper, the average conditional entropy `H̄` (Eq. 4, theor
 - `H̄ = - (1 / I) ∑_i ∑_n q^(i)(Z(n)) log₂ q^(i)(Z(n))`
 - `R = - (1 / I) ∑_i log₂ q^(i)(Q(x_i))`
 
-| Dataset / Split | Mean Conditional Entropy H̄ (bits/sample) | Theoretical Lower-Bound Bitrate (kb/s) | Cross-Entropy Rate R (bits/sample) | Cross-Entropy Bitrate (kb/s) | Active Arithmetic Coded Rate (bits/sample) | Active Arithmetic Bitrate (kb/s) | Arithmetic Coder Lossless Match Rate |
+| Dataset / Split | Mean Conditional Entropy H̄ (bits/sample) | Mean Entropy Bitrate (kb/s) | Cross-Entropy Rate R (`WW`, bits/sample) | Cross-Entropy Rate (`W_wo` / `W_w`, bits/sample) | Active Arithmetic Coded Rate (bits/sample) | Active Arithmetic Bitrate (kb/s) | Arithmetic Coder Lossless Match Rate |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| **Paper Reported (WSJ0, Sec. 3.2, 60-layer conditioned WW)** | 2.6113 (1.81 nats) | 41.78 | 2.6546 (1.84 nats) | 42.47 (~42 kb/s) | — | — | — |
-| **Reproduced — LibriSpeech (`test-clean`, 20-layer unconditioned WW)** | **4.9232** | **78.77** | **5.4089** (3.7491 nats) | **86.54** | **5.1243** | **81.99** | **100.0% (16/16)** |
-| **Reproduced — VCTK Corpus (20-layer unconditioned WW)** | **4.8631** | **77.81** | **4.9755** (3.4488 nats) | **79.61** | **4.8234** | **77.17** | **100.0% (16/16)** |
+| **Paper Reported (WSJ0, Sec. 3.2, 60-layer conditioned WW)** | 2.6113 (1.81 nats) | 41.78 | 2.6546 (1.84 nats) | — | — | — | — |
+| **Reproduced — LibriSpeech (`test-clean`, 20-layer WaveNet)** | **5.6769** | **90.83** | **5.3453** (3.7051 nats, 85.52 kb/s) | **5.3071** / **5.3053** | **5.3199** | **85.12** | **100.0% (16/16)** |
+| **Reproduced — VCTK Corpus (20-layer WaveNet)** | **5.6666** | **90.66** | **5.2587** (3.6450 nats, 84.14 kb/s) | **5.1908** / **5.1820** | **5.2461** | **83.94** | **100.0% (16/16)** |
 
-> **Architectural Scaling Note**: The original ICASSP 2018 paper trained a 60-layer conditioned WaveNet (`3` blocks × `10` layers + conditioning stack) on `32,580` WSJ0 utterances to reach `2.65 bits/sample` (`42 kb/s`). Our lightweight CPU-reproducible `20`-layer unconditioned closed-loop WaveNet (`2` blocks × `10` layers) reduces the 16 kHz 8-bit μ-law bitrate from **128.00 kb/s** to **77.17–81.99 kb/s** (`35.9%–39.7%` lossless compression savings) with **100% bit-exact reconstruction** across all 16 held-out utterances per corpus.
+> **Architectural Scaling Note**: The original ICASSP 2018 paper trained a 60-layer conditioned WaveNet (`3` blocks × `10` layers + conditioning stack) on `32,580` WSJ0 utterances to reach `2.65 bits/sample` (`42 kb/s`). Our lightweight CPU-reproducible `20`-layer closed-loop WaveNet (`2` blocks × `10` layers) reduces the 16 kHz 8-bit μ-law bitrate from **128.00 kb/s** to **83.94–85.12 kb/s** (`33.5%–34.4%` lossless compression savings) with **100% bit-exact reconstruction** across all 16 held-out utterances per corpus, and conditioning on the 2.4 kb/s Codec 2 parameters reduces cross-entropy further (`5.3053 < 5.3071 < 5.3453` on LibriSpeech; `5.1820 < 5.1908 < 5.2587` on VCTK).
 
 #### Paper Figure 2 vs. Reproduced Instantaneous Entropy Profile
 
@@ -76,11 +76,11 @@ As observed in Section 3.2 of the paper, the instantaneous entropy `H_i` is lowe
 
 Section 3.3 compares the 16 kHz Reference, Closed-Loop WaveNet Waveform Coder (`WW`), Likelihood-Guided Hybrid Mode-Switching (`WW + W_w`), **AMR-WB (`23.05 kb/s` via `libvo-amrwbenc` + `libopencore-amrwb`)**, **Parametric WaveNet with speaker overlap (`W_w, 2.4 kb/s`)**, **Parametric WaveNet without speaker overlap (`W_wo, 2.4 kb/s`)**, **MELP (`2.4 kb/s`)**, **Codec 2 (`2.4 kb/s`)**, and **Speex (`2.15 kb/s` via `libspeex`)**.
 
-Key empirical observations on our strictly reference-free 50-bit/20ms (`2.4 kb/s`) implementation:
-1. **Short-Time Objective Intelligibility (`STOI`) & Spectral Distortion (`MCD` / `LSD`)**: At **2.4 kb/s**, both Parametric WaveNet models (`W_w` and `W_wo`) achieve higher intelligibility (`STOI = 0.818` on LibriSpeech; `0.856` on VCTK) and significantly lower spectral envelope distortion (`MCD = 5.452–5.644 dB`, `LSD = 6.100–6.204 dB` on LibriSpeech; `MCD = 5.774–5.821 dB`, `LSD = 6.399–6.417 dB` on VCTK) than the narrow-band reference vocoders (`Codec 2`: `MCD = 8.383 / 9.994 dB`; `MELP`: `MCD = 8.091 / 9.629 dB`; `Speex`: `MCD = 8.055 / 9.004 dB`).
-2. **Pitch Tracking (`F0 RMSE`)**: Conditioning the 16 kHz Parametric WaveNet decoder on the quantized 7-bit F0 contour yields lower voiced pitch error (`6.872 / 6.344 Hz` on LibriSpeech; `17.184 / 17.126 Hz` on VCTK) than narrow-band `Codec 2` (`13.002 / 21.042 Hz`), `MELP` (`17.825 / 21.724 Hz`), and `Speex` (`40.598 / 40.055 Hz`).
-3. **Implicit 4–8 kHz Bandwidth Extension**: Whereas 8 kHz narrow-band codecs (`MELP`, `Codec 2`, `Speex`) contain negligible energy above 4 kHz (`0.007%–0.024%`), the 16 kHz Parametric WaveNet decoder reconstructs upper-band 4–8 kHz energy (`1.111%` for `W_w` and `0.880%` for `W_wo` on LibriSpeech; `0.545%` and `0.557%` on VCTK) purely from the 50-bit/20ms bitstream via the internal WaveNet wideband filterbank layers (`layers 1..3`).
-4. **ITU-T P.862.2 Wideband PESQ (`MOS-LQO`)**: Because ITU-T P.862.2 `PESQ-WB` penalizes phase-asynchronous generative vocoders without high-band waveform locking, all 2.15–2.4 kb/s parametric vocoders score in the `1.32–1.71` `PESQ-WB` range (compared to `2.3–2.7` under perceptual time-warped POLQA in Table 1 of Kleijn et al.), while `AMR-WB (23.05 kb/s)` achieves `4.006 / 3.809` and lossless `WaveNet Waveform (WW)` achieves `4.141 / 3.721`.
+Key empirical observations on our strictly reference-free, pure time-domain 50-bit/20ms (`2.4 kb/s`) implementation:
+1. **Short-Time Objective Intelligibility (`STOI`) & Spectral Distortion (`MCD` / `LSD`)**: At **2.4 kb/s**, both Parametric WaveNet models (`W_w` and `W_wo`) achieve higher intelligibility (`STOI = 0.821 / 0.807` on LibriSpeech; `0.846 / 0.824` on VCTK) and lower spectral envelope distortion (`MCD = 6.611 / 7.048 dB`, `LSD = 6.966 / 7.215 dB` on LibriSpeech; `MCD = 7.982 / 8.491 dB`, `LSD = 8.011 / 8.259 dB` on VCTK) than the narrow-band reference vocoders (`Codec 2`: `MCD = 8.216 / 10.103 dB`; `MELP`: `MCD = 7.918 / 9.692 dB`; `Speex`: `MCD = 7.944 / 9.161 dB`), with speaker-overlapping `W_w` consistently outperforming speaker-disjoint `W_wo`.
+2. **Pitch Tracking (`F0 RMSE`)**: Conditioning the 16 kHz Parametric WaveNet decoder on the quantized 7-bit F0 contour yields lower voiced pitch error (`9.111 / 9.703 Hz` on LibriSpeech; `18.094 / 19.838 Hz` on VCTK) than narrow-band `Codec 2` (`9.729 / 20.160 Hz`), `MELP` (`19.516 / 21.414 Hz`), and `Speex` (`31.137 / 31.791 Hz`).
+3. **Implicit 4–8 kHz Bandwidth Extension**: Whereas 8 kHz narrow-band codecs (`MELP`, `Codec 2`, `Speex`) contain negligible energy above 4 kHz (`0.007%–0.023%`), the 16 kHz Parametric WaveNet decoder reconstructs upper-band 4–8 kHz energy (`0.119%` for `W_w` and `0.070%` for `W_wo` on LibriSpeech; `0.063%` and `0.038%` on VCTK) purely in the time domain from the 50-bit/20ms bitstream via the WaveNet μ-law predictive distribution.
+4. **ITU-T P.862.2 Wideband PESQ (`MOS-LQO`)**: Because ITU-T P.862.2 `PESQ-WB` penalizes phase-asynchronous generative vocoders without high-band waveform locking, all 2.15–2.4 kb/s parametric vocoders score in the `1.30–1.80` `PESQ-WB` range (compared to `2.3–2.7` under perceptual time-warped POLQA in Table 1 of Kleijn et al.), while `AMR-WB (23.05 kb/s)` achieves `3.964 / 3.777` and lossless `WaveNet Waveform (WW)` achieves `4.171 / 3.772`.
 
 #### Paper Table 1 (WSJ0 POLQA MOS-LQO, Sec. 3.3)
 
@@ -98,31 +98,31 @@ Key empirical observations on our strictly reference-free 50-bit/20ms (`2.4 kb/s
 
 | System / Codec | Bitrate (kb/s) | ITU-T P.862.2 PESQ-WB ↑ | STOI (0–1) ↑ | F0 RMSE (Hz) ↓ | MCD (dB) ↓ | LSD (dB) ↓ | SegSNR (dB) ↑ | High-Band (4–8 kHz) Energy (%) |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| **Reference (16 kHz)** | 256.00 | **4.644** | **1.000** | 0.000 | 0.000 | 0.000 | 45.000 | 5.378% |
-| **8-bit μ-law (128 kb/s)** | 128.00 | **4.141** | **0.999** | 0.103 | 0.470 | 0.870 | 35.144 | 5.388% |
-| **WaveNet Waveform (`WW`)** | 86.54 (81.99 active) | **4.141** | **0.999** | 0.103 | 0.470 | 0.870 | 35.144 | 5.388% |
-| **Hybrid Mode-Switching (`WW + W_w`)** | 3.30 | 1.473 | **0.819** | 6.872 | **5.404** | **6.043** | -2.286 | **1.207%** |
-| **AMR-WB (23.05 kb/s)** | 23.05 | **4.006** | **0.988** | 7.494 | 1.523 | 3.218 | 5.711 | 2.492% |
-| **WaveNet Parametric (`W_w`, 2.4 kb/s)** | 2.40 | 1.470 | **0.818** | 6.872 | **5.452** | **6.100** | -2.466 | **1.111%** |
-| **WaveNet Parametric (`W_wo`, 2.4 kb/s)** | 2.40 | 1.484 | **0.818** | **6.344** | **5.644** | **6.204** | -2.446 | **0.880%** |
-| **MELP (2.4 kb/s)** | 2.40 | 1.708 | 0.807 | 17.825 | 8.091 | 7.989 | -2.759 | 0.021% |
-| **Codec 2 (2.4 kb/s)** | 2.40 | 1.548 | 0.793 | 13.002 | 8.383 | 8.212 | -2.187 | 0.018% |
-| **Speex (2.15 kb/s)** | 2.15 | 1.477 | 0.788 | 40.598 | 8.055 | 7.971 | -1.242 | 0.024% |
+| **Reference (16 kHz)** | 256.00 | **4.644** | **1.000** | 0.000 | 0.000 | 0.000 | 45.000 | 4.062% |
+| **8-bit μ-law (128 kb/s)** | 128.00 | **4.171** | **0.999** | 0.184 | 0.427 | 0.827 | 35.420 | 4.072% |
+| **WaveNet Waveform (`WW`)** | 85.53 (85.12 active) | **4.171** | **0.999** | 0.184 | 0.427 | 0.827 | 35.420 | 4.072% |
+| **Hybrid Mode-Switching (`WW + W_w`)** | 8.42 | 1.498 | **0.824** | 9.583 | **6.171** | **6.603** | 0.395 | **0.584%** |
+| **AMR-WB (23.05 kb/s)** | 23.05 | **3.964** | **0.984** | 8.114 | 1.491 | 3.131 | 6.049 | 2.165% |
+| **WaveNet Parametric (`W_w`, 2.4 kb/s)** | 2.40 | 1.566 | **0.821** | **9.111** | **6.611** | **6.966** | -2.123 | **0.119%** |
+| **WaveNet Parametric (`W_wo`, 2.4 kb/s)** | 2.40 | 1.601 | **0.807** | 9.703 | **7.048** | **7.215** | -2.114 | **0.070%** |
+| **MELP (2.4 kb/s)** | 2.40 | 1.795 | 0.804 | 19.516 | 7.918 | 7.832 | -2.846 | 0.020% |
+| **Codec 2 (2.4 kb/s)** | 2.40 | 1.628 | 0.796 | 9.729 | 8.216 | 8.041 | -2.171 | 0.018% |
+| **Speex (2.15 kb/s)** | 2.15 | 1.472 | 0.789 | 31.137 | 7.944 | 7.807 | -1.380 | 0.023% |
 
 #### VCTK Corpus Evaluation (`pretrained_models/evaluation_vctk.json`)
 
 | System / Codec | Bitrate (kb/s) | ITU-T P.862.2 PESQ-WB ↑ | STOI (0–1) ↑ | F0 RMSE (Hz) ↓ | MCD (dB) ↓ | LSD (dB) ↓ | SegSNR (dB) ↑ | High-Band (4–8 kHz) Energy (%) |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| **Reference (16 kHz)** | 256.00 | **4.644** | **1.000** | 0.000 | 0.000 | 0.000 | 45.000 | 1.604% |
-| **8-bit μ-law (128 kb/s)** | 128.00 | **3.721** | **0.999** | 0.121 | 0.552 | 0.860 | 34.748 | 1.613% |
-| **WaveNet Waveform (`WW`)** | 79.61 (77.17 active) | **3.721** | **0.999** | 0.121 | 0.552 | 0.860 | 34.748 | 1.613% |
-| **Hybrid Mode-Switching (`WW + W_w`)** | 2.84 | 1.318 | **0.856** | 17.184 | **5.762** | **6.404** | -2.189 | **0.551%** |
-| **AMR-WB (23.05 kb/s)** | 23.05 | **3.809** | **0.990** | 9.317 | 1.719 | 3.435 | 5.398 | 1.002% |
-| **WaveNet Parametric (`W_w`, 2.4 kb/s)** | 2.40 | 1.318 | **0.856** | 17.184 | **5.774** | **6.417** | -2.279 | **0.545%** |
-| **WaveNet Parametric (`W_wo`, 2.4 kb/s)** | 2.40 | 1.335 | **0.856** | **17.126** | **5.821** | **6.399** | -2.269 | **0.557%** |
-| **MELP (2.4 kb/s)** | 2.40 | 1.460 | 0.799 | 21.724 | 9.629 | 8.989 | -2.779 | 0.011% |
-| **Codec 2 (2.4 kb/s)** | 2.40 | 1.378 | 0.808 | 21.042 | 9.994 | 9.061 | -2.083 | 0.007% |
-| **Speex (2.15 kb/s)** | 2.15 | 1.489 | 0.825 | 40.055 | 9.004 | 8.727 | -1.193 | 0.015% |
+| **Reference (16 kHz)** | 256.00 | **4.644** | **1.000** | 0.000 | 0.000 | 0.000 | 45.000 | 1.774% |
+| **8-bit μ-law (128 kb/s)** | 128.00 | **3.772** | **0.999** | 0.107 | 0.472 | 0.810 | 34.976 | 1.783% |
+| **WaveNet Waveform (`WW`)** | 84.14 (83.94 active) | **3.772** | **0.999** | 0.107 | 0.472 | 0.810 | 34.976 | 1.783% |
+| **Hybrid Mode-Switching (`WW + W_w`)** | 7.78 | 1.240 | **0.845** | 18.124 | **7.612** | **7.747** | 0.368 | **0.230%** |
+| **AMR-WB (23.05 kb/s)** | 23.05 | **3.777** | **0.990** | 5.780 | 1.742 | 3.522 | 5.589 | 1.113% |
+| **WaveNet Parametric (`W_w`, 2.4 kb/s)** | 2.40 | 1.304 | **0.846** | **18.094** | **7.982** | **8.011** | -1.975 | **0.063%** |
+| **WaveNet Parametric (`W_wo`, 2.4 kb/s)** | 2.40 | 1.364 | **0.824** | 19.838 | **8.491** | **8.259** | -1.946 | **0.038%** |
+| **MELP (2.4 kb/s)** | 2.40 | 1.429 | 0.798 | 21.414 | 9.692 | 9.171 | -2.685 | 0.011% |
+| **Codec 2 (2.4 kb/s)** | 2.40 | 1.366 | 0.809 | 20.160 | 10.103 | 9.270 | -2.031 | 0.007% |
+| **Speex (2.15 kb/s)** | 2.15 | 1.491 | 0.820 | 31.791 | 9.161 | 8.986 | -1.183 | 0.017% |
 
 <p align="center">
   <img src="resources/mushra.png" alt="Paper Figure 3: MUSHRA Perceptual Evaluation" width="44%"/>
@@ -131,13 +131,13 @@ Key empirical observations on our strictly reference-free 50-bit/20ms (`2.4 kb/s
 
 ### 3. Speaker Identification & Triangle Test (Section 3.4)
 
-Section 3.4 evaluates speaker identity preservation using two 3-layer Projected-LSTM (`LSTMP`) speaker verification networks trained with `GE2E` loss on 8-bit μ-law speech (`wavenet_speaker_verifier_mulaw`, reaching **2.68% EER** on the held-out evaluation set) and 2.4 kb/s coded speech (`wavenet_speaker_verifier_coded`, reaching **12.50% EER** on the held-out evaluation set), plus a discrete 3-AFC odd-one-out triangle test (`Original`, `W_w`, `W_wo`) measuring how often `W_wo` is selected as the odd speaker out relative to the `33.33%` random-chance baseline:
+Section 3.4 evaluates speaker identity preservation using two 3-layer Projected-LSTM (`LSTMP`) speaker verification networks trained with `GE2E` loss on 8-bit μ-law speech (`wavenet_speaker_verifier_mulaw`, reaching **2.68% EER** on the held-out training evaluation set) and 2.4 kb/s coded speech (`wavenet_speaker_verifier_coded`, reaching **12.50% EER** on the held-out training evaluation set), plus a discrete 3-AFC odd-one-out triangle test (`Original`, `W_w`, `W_wo`) measuring how often `W_wo` is selected as the odd speaker out relative to the `33.33%` random-chance baseline:
 
 | Benchmark / Dataset | 8-bit μ-law EER (%) [95% CI] | Parametric WaveNet `W_wo` EER (%) (`V_coded`) [95% CI] | Parametric WaveNet `W_wo` EER (%) (`V_mulaw`) [95% CI] | Parametric WaveNet `W_w` EER (%) (`V_mulaw`) [95% CI] | Mean Cosine Similarity `cos(Orig, W_w)` vs `cos(Orig, W_wo)` | 3-AFC Triangle Odd-One-Out Rate (`W_wo` selected vs `33.33%` chance) |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: |
 | **Paper Reported (WSJ0, Sec. 3.4)** | 8.4% | 15.8% | — | — | — | **41.0%** (chance: 33.3%) |
-| **Reproduced — LibriSpeech (`test-clean`, 8 spk, 16 utt)** | **2.68%** [0.89%, 11.16%] | **12.50%** [1.77%, 21.44%] | **12.50%** [3.57%, 36.63%] | **12.50%** [3.57%, 34.38%] | **0.6787** vs **0.6469** (`Δ = +0.0318`, ABX `75.00%`) | **75.00%** (chance: 33.33%) |
-| **Reproduced — VCTK Corpus (8 spk, 16 utt)** | **12.95%** [4.02%, 37.51%] | **23.66%** [11.60%, 37.95%] | **23.66%** [12.50%, 37.06%] | **23.66%** [9.82%, 37.50%] | **0.5678** vs **0.5584** (`Δ = +0.0094`, ABX `75.00%`) | **75.00%** (chance: 33.33%) |
+| **Reproduced — LibriSpeech (`test-clean`, 8 spk, 16 utt)** | **12.50%** [1.34%, 22.32%] | **12.95%** [4.01%, 31.25%] | **13.39%** [5.35%, 37.51%] | **13.84%** [4.90%, 37.50%] | **0.6405** vs **0.5963** (`Δ = +0.0443`, ABX `75.00%`) | **75.00%** (chance: 33.33%) |
+| **Reproduced — VCTK Corpus (8 spk, 16 utt)** | **22.32%** [4.01%, 34.84%] | **22.32%** [9.35%, 30.83%] | **25.00%** [12.50%, 36.17%] | **26.79%** [12.50%, 42.86%] | **0.5318** vs **0.5106** (`Δ = +0.0211`, ABX `75.00%`) | **75.00%** (chance: 33.33%) |
 
 ---
 

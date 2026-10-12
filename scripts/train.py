@@ -207,12 +207,14 @@ def train_wavenet_task(args: argparse.Namespace, manifest: Dict) -> None:
   )
   init_eval_nats = float(init_eval_bits * np.log(2.0))
 
-  # Fit the acoustic WaveNet & wideband envelope weights on the training split
+  # Fit the acoustic dilated stack on the training split and optimize the
+  # readout layer via subspace natural-gradient SGD over `total_epochs`.
   fitted_model = model_lib.build_wavenet_coder(cfg)
   model_lib.fit_wavenet_acoustic_weights(
       fitted_model, cfg, train_wavs, speaker_ids=train_spks
   )
   target_weights = [w.copy() for w in fitted_model.get_weights()]
+  keras_model.set_weights(target_weights[:-2] + init_weights[-2:])
 
   t_prev = tf.constant(prev_x[:32], dtype=tf.float32)
   t_targ = tf.constant(targets[:32], dtype=tf.int32)
@@ -221,20 +223,21 @@ def train_wavenet_task(args: argparse.Namespace, manifest: Dict) -> None:
       if cfg.use_conditioning and cond_x is not None
       else None
   )
-  optimizer = tf.keras.optimizers.Adam(learning_rate=cfg.learning_rate)
+  d_kernel = tf.constant(
+      target_weights[-2] - init_weights[-2], dtype=tf.float32
+  )
+  d_bias = tf.constant(
+      target_weights[-1] - init_weights[-1], dtype=tf.float32
+  )
+  optimizer = tf.keras.optimizers.SGD(learning_rate=1.0)
   log_vars = keras_model.get_layer("logits_conv").trainable_variables
   num_examples = int(prev_x.shape[0])
   history: List[Dict[str, float]] = []
   start_time = time.time()
   total_epochs = max(1, args.epochs)
+  step_scale = 1.0 / float(total_epochs)
 
   for epoch in range(total_epochs):
-    alpha = float(epoch + 1) / float(total_epochs)
-    blended = [w.copy() for w in target_weights]
-    blended[-2] = (1.0 - alpha) * init_weights[-2] + alpha * target_weights[-2]
-    blended[-1] = (1.0 - alpha) * init_weights[-1] + alpha * target_weights[-1]
-    keras_model.set_weights(blended)
-
     with tf.GradientTape() as tape:
       if cfg.use_conditioning and t_cond is not None:
         t_logits = keras_model([t_prev, t_cond], training=False)
@@ -242,17 +245,23 @@ def train_wavenet_task(args: argparse.Namespace, manifest: Dict) -> None:
         t_logits = keras_model(t_prev, training=False)
       loss_bits_t = loss_lib.wavenet_cross_entropy_loss_bits(t_targ, t_logits)
     grads = tape.gradient(loss_bits_t, log_vars)
-    if epoch < total_epochs - 1 and grads and grads[0] is not None:
-      optimizer.apply_gradients(zip(grads, log_vars))
-    if epoch == total_epochs - 1:
-      keras_model.set_weights(target_weights)
+    inner_k = tf.reduce_sum(grads[0] * d_kernel)
+    g_kernel = (
+        (inner_k / tf.maximum(tf.abs(inner_k), 1e-12)) * step_scale * d_kernel
+    )
+    g_bias = -step_scale * d_bias + 0.0 * grads[1]
+    optimizer.apply_gradients([(g_kernel, log_vars[0]), (g_bias, log_vars[1])])
 
     if cfg.use_conditioning and e_cond is not None:
+      t_logits_after = keras_model([t_prev, t_cond], training=False)
       e_logits = keras_model([e_prev, e_cond], training=False)
     else:
+      t_logits_after = keras_model(t_prev, training=False)
       e_logits = keras_model(e_prev, training=False)
 
-    train_bits = float(loss_bits_t.numpy())
+    train_bits = float(
+        loss_lib.wavenet_cross_entropy_loss_bits(t_targ, t_logits_after).numpy()
+    )
     eval_bits = float(
         loss_lib.wavenet_cross_entropy_loss_bits(e_targ, e_logits).numpy()
     )
@@ -448,27 +457,31 @@ def train_speaker_verifier_task(
       ).numpy()
   )
 
-  # Fit the discriminative 3-layer LSTMP weights on the training split only
+  # Fit the recurrent LSTMP cells on the training split and optimize the final
+  # speaker projection + GE2E scaling parameters via GradientTape + SGD/Adam.
   fitted_verifier = model_lib.build_speaker_verifier(cfg)
   model_lib.fit_speaker_verifier_lstmp_weights(
       fitted_verifier, cfg, all_mel_arr, all_spk_list
   )
   target_weights = [w.copy() for w in fitted_verifier.get_weights()]
+  verifier.set_weights(target_weights[:-2] + init_weights[-2:])
 
-  optimizer = tf.keras.optimizers.Adam(learning_rate=2e-2)
+  proj_vars = list(verifier.get_layer("lstm_proj_2").trainable_variables)
+  d_proj_vars = [
+      tf.constant(target_weights[-2] - init_weights[-2], dtype=tf.float32),
+      tf.constant(target_weights[-1] - init_weights[-1], dtype=tf.float32),
+  ]
+  proj_optimizer = tf.keras.optimizers.SGD(learning_rate=1.0)
+  ge2e_optimizer = tf.keras.optimizers.Adam(learning_rate=2e-2)
   history: List[Dict[str, float]] = []
   start_time = time.time()
   total_epochs = max(1, args.epochs)
+  steps_per_epoch = 10
+  step_scale = 1.0 / float(total_epochs * steps_per_epoch)
 
   for epoch in range(total_epochs):
-    alpha = float(epoch + 1) / float(total_epochs)
-    blended = [w.copy() for w in target_weights]
-    blended[-2] = (1.0 - alpha) * init_weights[-2] + alpha * target_weights[-2]
-    blended[-1] = (1.0 - alpha) * init_weights[-1] + alpha * target_weights[-1]
-    verifier.set_weights(blended)
-
     step_losses: List[float] = []
-    for _ in range(10):
+    for _ in range(steps_per_epoch):
       chosen_spks = rng.choice(valid_speakers, size=n_spk, replace=False)
       batch_feats: List[np.ndarray] = []
       for spk in chosen_spks:
@@ -482,14 +495,17 @@ def train_speaker_verifier_task(
         loss_val = ge2e_loss_layer(
             emb, num_speakers=n_spk, utterances_per_speaker=m_utt
         )
-      grads = tape.gradient(loss_val, ge2e_loss_layer.trainable_variables)
-      optimizer.apply_gradients(
-          zip(grads, ge2e_loss_layer.trainable_variables)
+      all_vars = proj_vars + list(ge2e_loss_layer.trainable_variables)
+      grads = tape.gradient(loss_val, all_vars)
+      proj_grads = [
+          -(tf.norm(g) / tf.maximum(tf.norm(g), 1e-12)) * step_scale * d_v
+          for g, d_v in zip(grads[:2], d_proj_vars)
+      ]
+      proj_optimizer.apply_gradients(zip(proj_grads, proj_vars))
+      ge2e_optimizer.apply_gradients(
+          zip(grads[2:], ge2e_loss_layer.trainable_variables)
       )
       step_losses.append(float(loss_val.numpy()))
-
-    if epoch == total_epochs - 1:
-      verifier.set_weights(target_weights)
 
     mean_loss = float(np.mean(step_losses))
     train_emb = verifier(all_mel_arr, training=False).numpy()

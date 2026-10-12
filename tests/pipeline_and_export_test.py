@@ -132,6 +132,11 @@ class PipelineAndExportTest(unittest.TestCase):
     )
     wav = synth["spk_00"][0][:320]
     wav2 = synth["spk_01"][0][:320]
+    untrained_codec = inference.WaveNetParametricCodec(config=cfg)
+    untrained_out = untrained_codec.encode_and_decode(wav)
+    self.assertEqual(untrained_out["reconstructed_waveform"].shape, (320,))
+    self.assertEqual(untrained_out["conditioning"].shape, (320, 16))
+
     keras_model = model.build_wavenet_coder(cfg)
     model.fit_wavenet_acoustic_weights(
         keras_model, cfg, [wav, wav2], speaker_ids=["spk_00", "spk_01"]
@@ -164,7 +169,7 @@ class PipelineAndExportTest(unittest.TestCase):
           float(np.std(from_bits["reconstructed_waveform"])), 1e-4
       )
 
-      # Test waveform codec lossless roundtrip & hybrid codec
+      # Test waveform codec lossless roundtrip, export & hybrid codec
       w_cfg = configs.WaveNetCoderConfig(
           mode="waveform",
           num_blocks=1,
@@ -178,9 +183,11 @@ class PipelineAndExportTest(unittest.TestCase):
       )
       w_model = model.build_wavenet_coder(w_cfg)
       model.fit_wavenet_acoustic_weights(w_model, w_cfg, [wav])
-      w_codec = inference.WaveNetWaveformCodec(
-          config=w_cfg, keras_model=w_model
-      )
+      with tempfile.TemporaryDirectory() as w_tmpdir:
+        export.export_all_formats(
+            w_model, w_cfg.to_dict(), w_tmpdir, sequence_length=160
+        )
+        w_codec = inference.WaveNetWaveformCodec.from_pretrained(w_tmpdir)
       w_out = w_codec.encode_and_decode(wav, run_arithmetic_coder=True)
       self.assertTrue(w_out["lossless_exact_match"])
 

@@ -585,7 +585,118 @@ class Codec2ParametricCoder:
       )
 
     upsampled = np.repeat(cond_100hz, self.hop_16k, axis=0).astype(np.float32)
+    if frames:
+      c2_nb = self.synthesize_codec2_baseline(frames, seed=42)
+      wb_sig = self._synthesize_wideband_excitation(frames, seed=42)
+      x_nb_prev = np.zeros_like(c2_nb)
+      x_nb_prev[1:] = c2_nb[:-1]
+      x_nb_prev2 = np.zeros_like(c2_nb)
+      x_nb_prev2[1:] = x_nb_prev[:-1]
+      h0_nb = 1.54 * x_nb_prev - 0.58 * x_nb_prev2
+      gains = np.array([1.0, 3.2, 10.0, 32.0, 100.0, 250.0], dtype=np.float32)
+      w_tanh = np.array(
+          [0.3651, 0.1648, 0.2125, 0.1678, 0.1079, 0.0672], dtype=np.float32
+      )
+      u_ar_nb = (np.tanh(np.outer(h0_nb, gains)) @ w_tanh).astype(np.float32)
+      u_wb = (
+          np.sign(wb_sig)
+          * (np.log1p(255.0 * np.abs(wb_sig)) / np.log1p(255.0))
+      ).astype(np.float32)
+      delta_u_wb = np.clip(u_wb - u_ar_nb, -2.0, 2.0).astype(np.float32)
+      delta_u_wb[:2] = 0.0
+      upsampled[:, 14] = delta_u_wb
+      upsampled[:, 15] = x_nb_prev.astype(np.float32)
     return frames, upsampled
+
+  def _synthesize_wideband_excitation(
+      self,
+      frames: List[Codec2FrameParams],
+      seed: int = 42,
+  ) -> np.ndarray:
+    """Synthesizes 16 kHz wideband excitation strictly from 50-bit frames."""
+    num_frames = len(frames)
+    num_samples_16k = num_frames * self.hop_16k
+    if not frames:
+      return np.zeros(0, dtype=np.float32)
+
+    rng = np.random.default_rng(seed)
+    hop = self.hop_8k
+    out_8k = np.zeros(num_frames * hop, dtype=np.float64)
+    phase0 = 0.0
+    prev_lsf = (frames[0].lsf_hz / (0.5 * self.sample_rate_8k)) * np.pi
+    prev_f0 = frames[0].f0_hz
+    prev_rms = float(10.0 ** (frames[0].energy_db / 20.0))
+    zi_noise = np.zeros(self.lsf_order, dtype=np.float64)
+
+    for f_idx, frame in enumerate(frames):
+      cur_lsf = (frame.lsf_hz / (0.5 * self.sample_rate_8k)) * np.pi
+      cur_f0 = frame.f0_hz
+      target_rms = float(10.0 ** (frame.energy_db / 20.0))
+      low_v = float((frame.voicing_code >> 1) & 1)
+      high_v = float(frame.voicing_code & 1)
+
+      lsf_mid = 0.5 * (prev_lsf + cur_lsf)
+      lpc = lsf_to_lpc(lsf_mid).astype(np.float64)
+      a_poly = np.concatenate([[1.0], lpc])
+
+      if low_v > 0.5 and abs(cur_f0 - prev_f0) < 0.12 * cur_f0:
+        f0_vec = np.linspace(prev_f0, cur_f0, hop)
+      else:
+        f0_vec = np.full(hop, cur_f0)
+      omega_vec = 2.0 * np.pi * f0_vec / float(self.sample_rate_8k)
+      inst_phase = phase0 + np.cumsum(omega_vec)
+      phase0 = float(inst_phase[-1] % (2.0 * np.pi))
+
+      max_h = min(45, int(3900.0 // max(cur_f0, 55.0)))
+      voiced_sig = np.zeros(hop, dtype=np.float64)
+      if low_v > 0.5 and max_h >= 1:
+        h_idx = np.arange(1, max_h + 1, dtype=np.float64)
+        omega_h = 2.0 * np.pi * h_idx * cur_f0 / float(self.sample_rate_8k)
+        k_idx = np.arange(len(a_poly), dtype=np.float64)
+        denom = np.exp(-1j * np.outer(omega_h, k_idx)) @ a_poly
+        h_resp = 1.0 / (denom + 1e-6)
+        amp_h = np.abs(h_resp) * np.where(h_idx == 1, 1.6, 1.0)
+        phi_h = np.angle(h_resp)
+        harm_mat = np.cos(np.outer(inst_phase, h_idx) + phi_h[np.newaxis, :])
+        voiced_sig = harm_mat @ amp_h
+
+      noise = rng.standard_normal(hop)
+      unvoiced_sig, zi_noise = signal.lfilter([1.0], a_poly, noise, zi=zi_noise)
+      if low_v > 0.5:
+        v_rms = float(np.sqrt(np.mean(voiced_sig**2) + 1e-10))
+        u_rms = float(np.sqrt(np.mean(unvoiced_sig**2) + 1e-10))
+        uv_ratio = 0.12 if high_v > 0.5 else 0.25
+        synth_frame = voiced_sig + unvoiced_sig * (v_rms / u_rms) * uv_ratio
+      else:
+        synth_frame = unvoiced_sig
+
+      cur_rms = float(np.sqrt(np.mean(synth_frame**2) + 1e-10))
+      env = np.linspace(prev_rms, target_rms, hop) / cur_rms
+      out_8k[f_idx * hop:(f_idx + 1) * hop] = np.clip(
+          synth_frame * env, -0.98, 0.98
+      )
+      prev_lsf, prev_f0, prev_rms = cur_lsf, cur_f0, target_rms
+
+    full_16k = self._resample(
+        out_8k.astype(np.float32), self.sample_rate_8k, self.sample_rate_16k
+    )
+    if len(full_16k) < num_samples_16k:
+      full_16k = np.pad(full_16k, (0, num_samples_16k - len(full_16k)))
+    full_16k = full_16k[:num_samples_16k].astype(np.float64)
+
+    nyq = 0.5 * float(self.sample_rate_16k)
+    b_bp, a_bp = signal.butter(
+        3, [1800.0 / nyq, 3800.0 / nyq], btype="bandpass"
+    )
+    b_hp, a_hp = signal.butter(
+        3, [4000.0 / nyq, 7500.0 / nyq], btype="bandpass"
+    )
+    mid_band = signal.lfilter(b_bp, a_bp, full_16k)
+    m_std = float(np.std(mid_band)) + 1e-8
+    u_m = mid_band / m_std
+    nl_exc = (np.tanh(2.5 * u_m + 0.65) - np.tanh(0.65)) * m_std
+    hb_exc = 1.45 * signal.lfilter(b_hp, a_hp, nl_exc)
+    return np.clip(full_16k + hb_exc, -0.98, 0.98).astype(np.float32)
 
   def frames_to_bitstream(self, frames: List[Codec2FrameParams]) -> bytes:
     """Packs a list of 10 ms Codec2FrameParams back into a byte stream."""

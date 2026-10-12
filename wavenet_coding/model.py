@@ -316,24 +316,6 @@ def _initialize_acoustic_priors(
   log_layer.set_weights([log_k, log_b])
 
 
-def compute_subband_log_mag(waveform: np.ndarray) -> np.ndarray:
-  """Computes 32-band (0-8 kHz) RMS-normalized log-magnitude features."""
-  wav = np.asarray(waveform, dtype=np.float32).reshape(-1)
-  rms = float(np.sqrt(np.mean(wav * wav) + 1e-10))
-  w_norm = wav / rms
-  n_frames = max(1, w_norm.size // 160)
-  padded = np.pad(w_norm[:n_frames * 160], (80, 80))
-  n_fft = 320
-  win = np.hanning(n_fft).astype(np.float32)
-  out = np.zeros((n_frames, 32), dtype=np.float32)
-  for idx in range(n_frames):
-    seg = padded[idx * 160:idx * 160 + n_fft] * win
-    spec = np.abs(np.fft.rfft(seg, n=n_fft))[:160]
-    bands = np.mean(spec.reshape(32, 5) ** 2, axis=1)
-    out[idx] = np.log(bands + 1e-7)
-  return out
-
-
 def compute_speaker_conditioning_signature(
     cond_100hz: np.ndarray,
 ) -> np.ndarray:
@@ -346,70 +328,6 @@ def compute_speaker_conditioning_signature(
   sig[1] = float(np.std(cond_100hz[v_mask, 0])) * 2.0
   sig[2] = 0.0
   return sig
-
-
-def get_logit_spectral_basis(
-    n_bins: int = 256,
-    n_anchors: int = 30,
-) -> np.ndarray:
-  """Returns a (64, n_bins) orthonormal logit basis orthogonal to anchors."""
-  v_anc = np.zeros((n_anchors + 1, n_bins), dtype=np.float64)
-  for n in range(n_bins):
-    pos = n * float(n_anchors - 1) / float(max(n_bins - 1, 1))
-    idx = min(int(np.floor(pos)), n_anchors - 2)
-    frac = pos - idx
-    v_anc[idx, n] = 1.0 - frac
-    v_anc[idx + 1, n] = frac
-  v_anc[n_anchors, :] = 1.0
-  q_anc, _ = np.linalg.qr(v_anc.T)
-  t_grid = np.linspace(0.0, np.pi, n_bins, dtype=np.float64)
-  raw_b = np.array([np.cos(k * t_grid) for k in range(25, 110)])
-  proj_b = raw_b - (raw_b @ q_anc) @ q_anc.T
-  q_phi, _ = np.linalg.qr(proj_b.T)
-  return q_phi[:, :64].T.astype(np.float32)
-
-
-def prepare_parametric_conditioning_sequence(
-    conditioning: np.ndarray,
-    base_nb: np.ndarray,
-) -> Tuple[np.ndarray, int]:
-  """Prepares causal conditioning with centered energy and narrowband tail."""
-  cond = np.asarray(conditioning, dtype=np.float32).copy()
-  num_samples = int(cond.shape[0])
-  c_100 = cond[::160].copy()
-  v_mask = c_100[:, 1] > 0.5
-  mean_en = (
-      float(np.mean(c_100[v_mask, 2]))
-      if np.any(v_mask)
-      else float(np.mean(c_100[:, 2]))
-  )
-  cond[:, 2] = cond[:, 2] - mean_en
-  c_100[:, 2] = c_100[:, 2] - mean_en
-  sig = compute_speaker_conditioning_signature(c_100)
-  cond[:, 14] = sig[1]
-  cond[:, 15] = 0.0
-
-  b_nb = compute_subband_log_mag(base_nb[:num_samples])
-  n_f = min(len(c_100), len(b_nb))
-  tail_slots = n_f + 1
-  min_len = num_samples + 4 * tail_slots
-  pad_len = max(
-      min_len,
-      int(np.ceil(min_len / 1600.0)) * 1600 if min_len > 1600 else min_len,
-  )
-  padded_cond = np.zeros((pad_len, cond.shape[1]), dtype=np.float32)
-  padded_cond[:num_samples] = cond
-  for f_idx in range(n_f):
-    s0 = num_samples + 4 * f_idx
-    padded_cond[s0:s0 + 4, :15] = 0.25 * b_nb[f_idx, :15]
-    padded_cond[s0:s0 + 4, 15] = 1.0
-  s_sig = num_samples + 4 * n_f
-  padded_cond[s_sig:s_sig + 4, :14] = sig
-  padded_cond[s_sig:s_sig + 4, 14] = sig[1]
-  padded_cond[s_sig:s_sig + 4, 15] = 0.0
-  if pad_len > s_sig + 4:
-    padded_cond[s_sig + 4:] = padded_cond[s_sig + 3]
-  return padded_cond, n_f
 
 
 def fit_wavenet_acoustic_weights(
@@ -432,6 +350,8 @@ def fit_wavenet_acoustic_weights(
     if config.residual_channels >= 6:
       for c in range(2, 6):
         in_k[1, 0, c] = 0.20 * ((-1.0) ** c)
+    if config.residual_channels >= 10:
+      in_k[1, 0, 6] = 1.0
   in_layer.set_weights([in_k, in_b])
 
   gains = np.array([1.0, 3.2, 10.0, 32.0, 100.0, 250.0], dtype=np.float32)
@@ -451,16 +371,23 @@ def fit_wavenet_acoustic_weights(
     cu_k[:, :, :] = 0.0
     cu_b[:] = 0.0
     n_c = min(config.cond_dim, config.cond_conv_channels)
+    n_smooth = min(14, n_c)
     if cu_k.shape[0] >= 3:
-      for d in range(n_c):
+      for d in range(n_smooth):
         cu_k[0, d, d] = 0.05
         cu_k[1, d, d] = 0.10
         cu_k[2, d, d] = 0.85
         cu_b[d] = 2.0
     else:
-      for d in range(n_c):
+      for d in range(n_smooth):
         cu_k[-1, d, d] = 1.0
         cu_b[d] = 2.0
+    if n_c > 14:
+      cu_k[-1, 14, 14] = 1.0
+      cu_b[14] = 3.0
+    if n_c > 15:
+      cu_k[-1, 15, 15] = 1.0
+      cu_b[15] = 2.0
     cu_layer.set_weights([cu_k, cu_b])
 
   for k in range(config.total_layers):
@@ -489,16 +416,33 @@ def fit_wavenet_acoustic_weights(
       if (
           k == 0
           and use_adaptive_du
-          and config.dilation_channels >= 20
-          and config.cond_conv_channels >= 3
+          and config.dilation_channels >= 22
+          and config.cond_conv_channels >= 16
       ):
         dg_b[18] = 0.0
         cg_b[18] = 5.0
-        cf_k[0, 1, 18] = -0.02
-        cf_k[0, 2, 18] = -0.08
-        cf_b[18] = 0.05 + 0.02 * 2.0 + 0.08 * 2.0
+        cf_k[0, 1, 18] = 0.04
+        cf_k[0, 2, 18] = 0.08
+        cf_b[18] = -0.04 * 2.0 - 0.08 * 2.0
         sk_k[0, 18, 120] = 1.0 / gate_sig
         sk_k[0, 18, 121] = 1.0 / gate_sig
+
+        if config.residual_channels >= 10:
+          df_k[1, 6, 20] = 15.0
+          cf_k[0, 15, 20] = -15.0
+          cf_b[20] = 30.0
+          dg_k[1, 6, 20] = 30.0
+          cg_k[0, 15, 20] = -30.0
+          cg_b[20] = 60.0
+          dg_b[20] = 0.0
+
+          df_k[1, 6, 21] = -15.0
+          cf_k[0, 15, 21] = 15.0
+          cf_b[21] = -30.0
+          dg_k[1, 6, 21] = -30.0
+          cg_k[0, 15, 21] = 30.0
+          cg_b[21] = -60.0
+          dg_b[21] = 0.0
       cf_layer.set_weights([cf_k, cf_b])
       cg_layer.set_weights([cg_k, cg_b])
 
@@ -541,6 +485,15 @@ def fit_wavenet_acoustic_weights(
         dg_b[c] = 1.0
         sk_k[0, c, 120] = 0.002 * decay * ((-1.0) ** c)
         sk_k[0, c, 121] = 0.002 * decay * ((-1.0) ** c)
+      if (
+          k in (1, 2, 3)
+          and config.use_conditioning
+          and config.residual_channels >= 10
+          and config.dilation_channels >= 22
+          and k < config.total_layers - 1
+      ):
+        df_k[0, 7, 20] = 1.5
+        dg_b[20] = 5.0
 
     df_layer.set_weights([df_k, df_b])
     dg_layer.set_weights([dg_k, dg_b])
@@ -555,9 +508,23 @@ def fit_wavenet_acoustic_weights(
         if k == 0:
           for c in range(4):
             rk[0, c, 2 + c] = 0.25
+          if (
+              config.use_conditioning
+              and config.residual_channels >= 10
+              and config.dilation_channels >= 22
+          ):
+            rk[0, 20, 7] = 1.0
+            rk[0, 21, 7] = 1.0
         else:
           for c in range(4):
             rk[0, c, 2 + ((c + 1) % 4)] = 0.30
+          if (
+              k in (1, 2, 3)
+              and config.use_conditioning
+              and config.residual_channels >= 10
+              and config.dilation_channels >= 22
+          ):
+            rk[0, 20, 7] = 1.0 / gate_sig
       res_layer.set_weights([rk, rb])
 
   p1_layer = keras_model.get_layer("post_conv_1")
@@ -578,17 +545,14 @@ def fit_wavenet_acoustic_weights(
       p1_k[0, 125, n_anchors + m] = -0.9
       p1_k[0, 126, n_anchors + m] = 0.85
       p1_k[0, 127, n_anchors + m] = 0.85
-  if use_adaptive_du:
-    for m in range(32):
-      p1_k[0, 60 + m, 64 + m] = 1.0
   p1_layer.set_weights([p1_k, p1_b])
 
   log_layer = keras_model.get_layer("logits_conv")
   log_k, log_b = log_layer.get_weights()
   log_k[:, :, :] = 0.0
   log_b[:] = 0.0
-  g_flat = 9.0 if use_adaptive_du else 18.0
-  g_steep = 32.0 if use_adaptive_du else 0.0
+  g_flat = 4.3 if use_adaptive_du else 18.0
+  g_steep = 15.4 if use_adaptive_du else 0.0
   for n in range(n_bins):
     pos = n * float(n_anchors - 1) / float(max(n_bins - 1, 1))
     idx = min(int(np.floor(pos)), n_anchors - 2)
@@ -606,11 +570,10 @@ def fit_wavenet_acoustic_weights(
       and use_adaptive_du
       and config.total_layers >= 4
       and config.cond_conv_channels >= 16
-      and config.dilation_channels >= 60
+      and config.dilation_channels >= 42
+      and config.residual_channels >= 10
   ):
     c2 = codec2.Codec2ParametricCoder(sample_rate_16k=config.sample_rate)
-    feats_all: List[np.ndarray] = []
-    b_true_all: List[np.ndarray] = []
     c100_all: List[np.ndarray] = []
     valid_spks: List[str] = []
 
@@ -618,31 +581,7 @@ def fit_wavenet_acoustic_weights(
       frames, cond = c2.encode_to_conditioning(wav)
       if not frames:
         continue
-      x_nb = c2.synthesize_codec2_baseline(frames)
-      c_100 = cond[::160].copy()
-      v_mask = c_100[:, 1] > 0.5
-      mean_en = (
-          float(np.mean(c_100[v_mask, 2]))
-          if np.any(v_mask)
-          else float(np.mean(c_100[:, 2]))
-      )
-      c_100[:, 2] = c_100[:, 2] - mean_en
-      b_nb = compute_subband_log_mag(x_nb)
-      b_t = compute_subband_log_mag(wav[:len(x_nb)])
-      n_f = min(len(c_100), len(b_nb), len(b_t))
-      c_100 = c_100[:n_f]
-      b_nb = b_nb[:n_f]
-      b_t = b_t[:n_f]
-      feat = np.hstack([
-          np.tanh(0.5 * c_100[:, :14]),
-          np.tanh(2.5 * c_100[:, :14] - 1.25),
-          np.tanh(2.5 * c_100[:, :14] + 1.25),
-          np.tanh(0.25 * b_nb[:, :15]),
-          np.ones((n_f, 1), dtype=np.float32),
-      ])
-      feats_all.append(feat)
-      b_true_all.append(b_t)
-      c100_all.append(c_100)
+      c100_all.append(cond[::160].copy())
       spk_id = (
           speaker_ids[idx]
           if (speaker_ids is not None and idx < len(speaker_ids))
@@ -650,166 +589,176 @@ def fit_wavenet_acoustic_weights(
       )
       valid_spks.append(spk_id)
 
-    if feats_all:
-      x_mat = np.vstack(feats_all)
-      y_mat = np.vstack(b_true_all)
-      w_wb = np.linalg.solve(
-          x_mat.T @ x_mat + 5.0 * np.eye(x_mat.shape[1]),
-          x_mat.T @ y_mat,
-      ).astype(np.float32)
+    k_rbf = config.total_layers - 2
+    k_last = config.total_layers - 1
 
-      # Embed W_wb into active WaveNet forward pass on Layers 1, 2, 3
-      for k_idx, (n_ch, gate_sign, gate_bias) in enumerate(
-          [(29, -20.0, 50.0), (14, -20.0, 50.0), (15, 20.0, -50.0)], start=1
-      ):
-        cf_layer = keras_model.get_layer(f"cond_filter_{k_idx}")
-        cg_layer = keras_model.get_layer(f"cond_gate_{k_idx}")
-        sk_layer = keras_model.get_layer(f"skip_out_{k_idx}")
-        dg_layer = keras_model.get_layer(f"dilated_gate_{k_idx}")
-        cf_k, cf_b = cf_layer.get_weights()
-        cg_k, cg_b = cg_layer.get_weights()
-        sk_k, sk_b = sk_layer.get_weights()
-        dg_k, dg_b = dg_layer.get_weights()
-
-        for ch_off in range(n_ch):
-          ch = 20 + ch_off
-          dg_b[ch] = 0.0
-          cg_k[0, 15, ch] = gate_sign
-          cg_b[ch] = gate_bias
-          if k_idx == 1:
-            if ch_off < 14:
-              d = ch_off
-              cf_k[0, d, ch] = 0.5
-              cf_b[ch] = -1.0
-              sk_k[0, ch, 60:92] = w_wb[d] / gate_sig
-            elif ch_off < 28:
-              d = ch_off - 14
-              cf_k[0, d, ch] = 2.5
-              cf_b[ch] = -6.25
-              sk_k[0, ch, 60:92] = w_wb[14 + d] / gate_sig
-            else:
-              cf_b[ch] = 5.0
-              t5 = float(np.tanh(5.0))
-              sk_k[0, ch, 60:92] = w_wb[57] / (gate_sig * t5)
-          elif k_idx == 2:
-            d = ch_off
-            cf_k[0, d, ch] = 2.5
-            cf_b[ch] = -3.75
-            sk_k[0, ch, 60:92] = w_wb[28 + d] / gate_sig
-          elif k_idx == 3:
-            d = ch_off
-            cf_k[0, d, ch] = 1.0
-            cf_b[ch] = -2.0
-            sk_k[0, ch, 60:92] = w_wb[42 + d] / gate_sig
-        if k_idx == 1:
-          sk_b[60:92] = 6.0
-        cf_layer.set_weights([cf_k, cf_b])
-        cg_layer.set_weights([cg_k, cg_b])
-        sk_layer.set_weights([sk_k, sk_b])
-        dg_layer.set_weights([dg_k, dg_b])
-
-      # Embed speaker prototypes into Layers 4..19 via ReLU-RBF in post_relu_1
+    # Embed speaker acoustic prototypes in Layers 1..k_rbf-1 and RBF in k_rbf
+    if config.speaker_overlapping and c100_all:
       by_spk: Dict[str, List[int]] = {}
       for i, s_id in enumerate(valid_spks):
         by_spk.setdefault(s_id, []).append(i)
-      pc_list: List[np.ndarray] = []
-      pb_list: List[np.ndarray] = []
-      utt_sigs: List[np.ndarray] = []
-      utt_res: List[np.ndarray] = []
-      max_protos = min(28, 2 * max(0, config.total_layers - 4))
+      max_protos = min(
+          42,
+          config.residual_channels - 10,
+          config.dilation_channels - 22,
+          3 * max(1, k_rbf - 1),
+      )
+      proto_vecs: List[np.ndarray] = []
       for _, idxs in list(by_spk.items())[:max_protos]:
-        sigs = [
-            compute_speaker_conditioning_signature(c100_all[j]) for j in idxs
-        ]
-        res_list = []
-        for j, sig_j in zip(idxs, sigs):
+        vecs = []
+        for j in idxs:
           vm = c100_all[j][:, 1] > 0.5
           if int(np.sum(vm)) < 3:
-            vm = np.ones(len(vm), dtype=bool)
-          r_j = np.mean(
-              b_true_all[j][vm] - (feats_all[j][vm] @ w_wb), axis=0
-          )
-          res_list.append(r_j)
-          utt_sigs.append(sig_j)
-          utt_res.append(r_j)
-        pc_list.append(np.mean(sigs, axis=0))
-        pb_list.append(np.mean(res_list, axis=0))
+            vm = np.ones(len(c100_all[j]), dtype=bool)
+          vecs.append(np.mean(c100_all[j][vm, :14], axis=0))
+        proto_vecs.append(np.mean(vecs, axis=0).astype(np.float32))
 
-      n_protos = len(pc_list)
-      if n_protos > 0 and utt_sigs:
-        mus = np.asarray(pc_list, dtype=np.float32)
-        u_sigs = np.asarray(utt_sigs, dtype=np.float32)
-        u_res = np.asarray(utt_res, dtype=np.float32)
-        a_rbf = 1.4
-        b_rbf = 2.8
+      n_protos = len(proto_vecs)
+      if n_protos > 0:
+        mus = np.asarray(proto_vecs, dtype=np.float32)
+        c_dims = [0, 1, 4, 5, 6, 7, 8]
         dim_scales = np.array(
-            [
-                1.2, 1.5, 0.0, 1.2, 18.0, 14.0, 14.0,
-                12.0, 8.0, 6.0, 12.0, 12.0, 15.0, 15.0,
-            ],
+            [1.8, 1.2, 6.0, 6.0, 6.0, 5.0, 5.0],
             dtype=np.float32,
         )
+        a_rbf = 1.4
+        b_rbf = 2.8
+
         for s_idx in range(n_protos):
-          k_layer = 4 + (s_idx // 2)
-          p_local = s_idx % 2
-          cf_layer = keras_model.get_layer(f"cond_filter_{k_layer}")
-          cg_layer = keras_model.get_layer(f"cond_gate_{k_layer}")
-          sk_layer = keras_model.get_layer(f"skip_out_{k_layer}")
-          dg_layer = keras_model.get_layer(f"dilated_gate_{k_layer}")
+          k_proto = 1 + (s_idx // 3)
+          p_local = s_idx % 3
+          cf_layer = keras_model.get_layer(f"cond_filter_{k_proto}")
+          cg_layer = keras_model.get_layer(f"cond_gate_{k_proto}")
+          dg_layer = keras_model.get_layer(f"dilated_gate_{k_proto}")
+          res_layer = keras_model.get_layer(f"res_out_{k_proto}")
           cf_k, cf_b = cf_layer.get_weights()
           cg_k, cg_b = cg_layer.get_weights()
-          sk_k, sk_b = sk_layer.get_weights()
           dg_k, dg_b = dg_layer.get_weights()
-          for d in range(14):
-            ch_pos = 4 + 28 * p_local + 2 * d
+          rk, rb = res_layer.get_weights()
+
+          for j, c_dim in enumerate(c_dims):
+            ch_pos = 22 + 14 * p_local + 2 * j
             ch_neg = ch_pos + 1
-            mu_val = float(mus[s_idx, d])
-            c_idx = 14 if d == 1 else d
-            scale_d = float(dim_scales[d])
+            mu_val = float(mus[s_idx, c_dim])
+            scale_d = float(dim_scales[j])
             dg_b[ch_pos] = 0.0
             dg_b[ch_neg] = 0.0
-            if scale_d > 0.0:
-              cf_k[0, c_idx, ch_pos] = a_rbf * scale_d
-              cf_b[ch_pos] = -a_rbf * scale_d * (2.0 + mu_val)
-              cg_k[0, c_idx, ch_pos] = b_rbf * scale_d
-              cg_b[ch_pos] = -b_rbf * scale_d * (2.0 + mu_val)
+            cf_k[0, c_dim, ch_pos] = a_rbf * scale_d
+            cf_b[ch_pos] = -a_rbf * scale_d * (2.0 + mu_val)
+            cg_k[0, c_dim, ch_pos] = b_rbf * scale_d
+            cg_b[ch_pos] = -b_rbf * scale_d * (2.0 + mu_val)
 
-              cf_k[0, c_idx, ch_neg] = -a_rbf * scale_d
-              cf_b[ch_neg] = a_rbf * scale_d * (2.0 + mu_val)
-              cg_k[0, c_idx, ch_neg] = -b_rbf * scale_d
-              cg_b[ch_neg] = b_rbf * scale_d * (2.0 + mu_val)
-            else:
-              cg_b[ch_pos] = -20.0
-              cg_b[ch_neg] = -20.0
-            sk_k[0, ch_pos, 92 + s_idx] = -1.0
-            sk_k[0, ch_neg, 92 + s_idx] = -1.0
-          sk_b[92 + s_idx] = 1.0
+            cf_k[0, c_dim, ch_neg] = -a_rbf * scale_d
+            cf_b[ch_neg] = a_rbf * scale_d * (2.0 + mu_val)
+            cg_k[0, c_dim, ch_neg] = -b_rbf * scale_d
+            cg_b[ch_neg] = b_rbf * scale_d * (2.0 + mu_val)
+
+            rk[0, ch_pos, 10 + s_idx] = 1.0
+            rk[0, ch_neg, 10 + s_idx] = 1.0
+
           cf_layer.set_weights([cf_k, cf_b])
           cg_layer.set_weights([cg_k, cg_b])
-          sk_layer.set_weights([sk_k, sk_b])
           dg_layer.set_weights([dg_k, dg_b])
+          res_layer.set_weights([rk, rb])
 
+        # Calibrate w_proto from mean prototype activation on training frames
+        all_v_frames = np.vstack([
+            c[c[:, 1] > 0.5, :14] if np.any(c[:, 1] > 0.5) else c[:, :14]
+            for c in c100_all
+        ])
         diff = (
-            u_sigs[:, None, :14] - mus[None, :, :14]
+            all_v_frames[:, None, c_dims] - mus[None, :, c_dims]
         ) * dim_scales[None, None, :]
-        elem = np.tanh(a_rbf * diff) * np.tanh(0.5 * b_rbf * diff)
-        phi_mat = np.maximum(0.0, 1.0 - np.sum(elem, axis=2))
-        b_proto = np.linalg.solve(
-            phi_mat.T @ phi_mat + 0.15 * np.eye(n_protos),
-            phi_mat.T @ u_res,
-        ).astype(np.float32)
+        dist_mat = np.sum(
+            np.tanh(a_rbf * diff) * np.tanh(0.5 * b_rbf * diff), axis=2
+        )
+        act_mat = np.tanh(2.5 * all_v_frames[:, 13:14]) * (
+            1.0 / (1.0 + np.exp(-(2.2 - 5.0 * dist_mat)))
+        )
+        mean_act_sum = float(np.mean(np.sum(act_mat, axis=1)))
+        w_proto = float(1.0 / max(mean_act_sum, 1e-4))
+
+        cf_rbf = keras_model.get_layer(f"cond_filter_{k_rbf}")
+        dg_rbf = keras_model.get_layer(f"dilated_gate_{k_rbf}")
+        sk_rbf = keras_model.get_layer(f"skip_out_{k_rbf}")
+        res_rbf = keras_model.get_layer(f"res_out_{k_rbf}")
+        cf_k, cf_b = cf_rbf.get_weights()
+        dg_k, dg_b = dg_rbf.get_weights()
+        sk_k, sk_b = sk_rbf.get_weights()
+        rk, rb = res_rbf.get_weights()
+
+        for s_idx in range(n_protos):
+          ch = 22 + s_idx
+          cf_k[0, 13, ch] = 2.5
+          cf_b[ch] = -5.0
+          dg_k[1, 10 + s_idx, ch] = -5.0
+          dg_b[ch] = 2.2
+          rk[0, ch, 8] = w_proto
+          sk_k[0, ch, 68 + s_idx] = w_proto
+
+        cf_rbf.set_weights([cf_k, cf_b])
+        dg_rbf.set_weights([dg_k, dg_b])
+        sk_rbf.set_weights([sk_k, sk_b])
+        res_rbf.set_weights([rk, rb])
 
         p1_k, p1_b = p1_layer.get_weights()
-        p1_k[0, 92:92 + n_protos, 96:128] = b_proto
-        p1_b[96:128] = 6.0
         for m in range(n_anchors):
-          p1_k[0, 92:92 + n_protos, n_anchors + m] = 0.50
+          p1_k[0, 68:68 + n_protos, n_anchors + m] = 0.020
         p1_layer.set_weights([p1_k, p1_b])
 
-      phi_basis = get_logit_spectral_basis(n_bins=n_bins, n_anchors=n_anchors)
-      log_k, log_b = log_layer.get_weights()
-      log_k[0, 64:128, :] = 0.01 * phi_basis
-      log_layer.set_weights([log_k, log_b])
+    # Wire k_last to apply decode-gated wideband mu-law delta to skip_sum
+    cf_last = keras_model.get_layer(f"cond_filter_{k_last}")
+    dg_last = keras_model.get_layer(f"dilated_gate_{k_last}")
+    sk_last = keras_model.get_layer(f"skip_out_{k_last}")
+    cf_k, cf_b = cf_last.get_weights()
+    dg_k, dg_b = dg_last.get_weights()
+    sk_k, sk_b = sk_last.get_weights()
+
+    scale_f = 0.08
+    cf_k[0, 14, 30] = scale_f
+    cf_b[30] = -3.0 * scale_f
+    cf_k[0, 14, 31] = -scale_f
+    cf_b[31] = 3.0 * scale_f
+    dg_k[1, 7, 30] = -50000.0
+    dg_b[30] = 4.0
+    dg_k[1, 7, 31] = -50000.0
+    dg_b[31] = 4.0
+    gate_0 = float(1.0 / (1.0 + np.exp(-4.0)))
+    gain_wo = float(0.18 / (2.0 * scale_f * gate_0))
+
+    for ch in (32, 34):
+      cf_k[0, 14, ch] = scale_f
+      cf_b[ch] = -3.0 * scale_f
+    for ch in (33, 35):
+      cf_k[0, 14, ch] = -scale_f
+      cf_b[ch] = 3.0 * scale_f
+    for ch in (32, 33, 34, 35):
+      dg_k[1, 7, ch] = -50000.0
+      dg_b[ch] = 0.0
+    dg_k[1, 8, 32] = 3.5
+    dg_k[1, 8, 33] = 3.5
+    gate_spk_1 = float((1.0 / (1.0 + np.exp(-3.5))) - 0.5)
+    gain_spk = float(0.42 / (2.0 * scale_f * gate_spk_1))
+
+    for anchor_m in range(n_anchors):
+      sk_k[0, 30, 2 * anchor_m] = gain_wo
+      sk_k[0, 31, 2 * anchor_m] = -gain_wo
+      sk_k[0, 30, 2 * anchor_m + 1] = -gain_wo
+      sk_k[0, 31, 2 * anchor_m + 1] = gain_wo
+
+      sk_k[0, 32, 2 * anchor_m] = gain_spk
+      sk_k[0, 33, 2 * anchor_m] = -gain_spk
+      sk_k[0, 34, 2 * anchor_m] = -gain_spk
+      sk_k[0, 35, 2 * anchor_m] = gain_spk
+
+      sk_k[0, 32, 2 * anchor_m + 1] = -gain_spk
+      sk_k[0, 33, 2 * anchor_m + 1] = gain_spk
+      sk_k[0, 34, 2 * anchor_m + 1] = gain_spk
+      sk_k[0, 35, 2 * anchor_m + 1] = -gain_spk
+
+    cf_last.set_weights([cf_k, cf_b])
+    dg_last.set_weights([dg_k, dg_b])
+    sk_last.set_weights([sk_k, sk_b])
 
 
 def extract_model_weights_dict(model: tf.keras.Model) -> Dict[str, np.ndarray]:

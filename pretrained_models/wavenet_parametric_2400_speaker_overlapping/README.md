@@ -37,16 +37,16 @@ Speaker-overlapping 2.4 kb/s Codec 2 conditioned Parametric WaveNet speech coder
 1. `model.safetensors`: Hugging Face SafeTensors FP32 weights.
 2. `config.json`: Complete model architecture and hyperparameter specification (`mode="parametric"`, `speaker_overlapping=True`).
 3. `saved_model/`: TensorFlow 2 SavedModel directory with serving signatures.
-4. `model_fp32.tflite` (`1,652,560` bytes) & `model_int8.tflite` (`507,696` bytes): Verified TensorFlow Lite flatbuffers.
+4. `model_fp32.tflite` (`1,751,784` bytes) & `model_int8.tflite` (`429,208` bytes): Verified TensorFlow Lite flatbuffers.
 5. `model_f16.gguf` & `model_q4_k_m.gguf`: Verified GGUF v3 binary files (`246` tensors) for C++/edge inference.
 6. `training_metrics.json` & `evaluation_metrics.json`: Full training curves and benchmark evaluations on LibriSpeech (`test-clean`) and VCTK.
 
 ## Training Progression (`training_metrics.json`)
 
-- **Training Corpus**: `168` speaker-overlapping utterances (`64` windows across `40` speakers, held-out utterances excluded) from LibriSpeech `test-clean` + CSTR VCTK at 16 kHz
-- **Wall-Clock Training Time**: `27.35 s` (`10` epochs)
-- **Initial Eval Cross-Entropy**: `7.0186` bits/sample (`4.8650` nats/sample)
-- **Final Eval Cross-Entropy**: `4.3116` bits/sample (`2.9886` nats/sample, train: `4.1180` bits/sample)
+- **Training Corpus**: `168` speaker-overlapping utterances (`64` windows across `40` speakers, `334.38 s` audio, held-out utterances excluded) from LibriSpeech `test-clean` + CSTR VCTK at 16 kHz
+- **Wall-Clock Training Time**: `41.71 s` (`10` epochs)
+- **Initial Eval Cross-Entropy**: `7.0186` bits/sample (`4.8649` nats/sample)
+- **Final Eval Cross-Entropy**: `4.6119` bits/sample (`3.1967` nats/sample, train: `4.5170` bits/sample)
 
 ## Evaluation Results
 
@@ -54,35 +54,35 @@ Speaker-overlapping 2.4 kb/s Codec 2 conditioned Parametric WaveNet speech coder
 
 | System / Codec | Bitrate (kb/s) | ITU-T P.862.2 PESQ-WB ↑ | STOI (0–1) ↑ | F0 RMSE (Hz) ↓ | MCD (dB) ↓ | LSD (dB) ↓ | SegSNR (dB) ↑ | High-Band (4–8 kHz) Energy (%) |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| **Reference (16 kHz)** | 256.00 | 4.644 | 1.000 | 0.000 | 0.000 | 0.000 | 45.000 | 5.378% |
-| **Hybrid Mode-Switching (`WW + W_w`)** | **3.30** | **1.473** | **0.819** | **6.872** | **5.404** | **6.043** | **-2.286** | **1.207%** |
-| **AMR-WB (23.05 kb/s)** | 23.05 | 4.006 | 0.988 | 7.494 | 1.523 | 3.218 | 5.711 | 2.492% |
-| **WaveNet Parametric (`W_w`, 2.4 kb/s)** | **2.40** | **1.470** | **0.818** | **6.872** | **5.452** | **6.100** | **-2.466** | **1.111%** |
-| **WaveNet Parametric (`W_wo`, 2.4 kb/s)** | 2.40 | 1.484 | 0.818 | 6.344 | 5.644 | 6.204 | -2.446 | 0.880% |
-| **MELP (2.4 kb/s)** | 2.40 | 1.708 | 0.807 | 17.825 | 8.091 | 7.989 | -2.759 | 0.021% |
-| **Codec 2 (2.4 kb/s)** | 2.40 | 1.548 | 0.793 | 13.002 | 8.383 | 8.212 | -2.187 | 0.018% |
-| **Speex (2.15 kb/s)** | 2.15 | 1.477 | 0.788 | 40.598 | 8.055 | 7.971 | -1.242 | 0.024% |
+| **Reference (16 kHz)** | 256.00 | 4.644 | 1.000 | 0.000 | 0.000 | 0.000 | 45.000 | 4.062% |
+| **Hybrid Mode-Switching (`WW + W_w`)** | **8.42** | **1.498** | **0.824** | **9.583** | **6.171** | **6.603** | **0.395** | **0.584%** |
+| **AMR-WB (23.05 kb/s)** | 23.05 | 3.964 | 0.984 | 8.114 | 1.491 | 3.131 | 6.049 | 2.165% |
+| **WaveNet Parametric (`W_w`, 2.4 kb/s)** | **2.40** | **1.566** | **0.821** | **9.111** | **6.611** | **6.966** | **-2.123** | **0.119%** |
+| **WaveNet Parametric (`W_wo`, 2.4 kb/s)** | 2.40 | 1.601 | 0.807 | 9.703 | 7.048 | 7.215 | -2.114 | 0.070% |
+| **MELP (2.4 kb/s)** | 2.40 | 1.795 | 0.804 | 19.516 | 7.918 | 7.832 | -2.846 | 0.020% |
+| **Codec 2 (2.4 kb/s)** | 2.40 | 1.628 | 0.796 | 9.729 | 8.216 | 8.041 | -2.171 | 0.018% |
+| **Speex (2.15 kb/s)** | 2.15 | 1.472 | 0.789 | 31.137 | 7.944 | 7.807 | -1.380 | 0.023% |
 
 ### 2. Parametric 2.4 kb/s & Hybrid Mode-Switching Comparison — VCTK Corpus
 
 | System / Codec | Bitrate (kb/s) | ITU-T P.862.2 PESQ-WB ↑ | STOI (0–1) ↑ | F0 RMSE (Hz) ↓ | MCD (dB) ↓ | LSD (dB) ↓ | SegSNR (dB) ↑ | High-Band (4–8 kHz) Energy (%) |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| **Reference (16 kHz)** | 256.00 | 4.644 | 1.000 | 0.000 | 0.000 | 0.000 | 45.000 | 1.604% |
-| **Hybrid Mode-Switching (`WW + W_w`)** | **2.84** | **1.318** | **0.856** | **17.184** | **5.762** | **6.404** | **-2.189** | **0.551%** |
-| **AMR-WB (23.05 kb/s)** | 23.05 | 3.809 | 0.990 | 9.317 | 1.719 | 3.435 | 5.398 | 1.002% |
-| **WaveNet Parametric (`W_w`, 2.4 kb/s)** | **2.40** | **1.318** | **0.856** | **17.184** | **5.774** | **6.417** | **-2.279** | **0.545%** |
-| **WaveNet Parametric (`W_wo`, 2.4 kb/s)** | 2.40 | 1.335 | 0.856 | 17.126 | 5.821 | 6.399 | -2.269 | 0.557% |
-| **MELP (2.4 kb/s)** | 2.40 | 1.460 | 0.799 | 21.724 | 9.629 | 8.989 | -2.779 | 0.011% |
-| **Codec 2 (2.4 kb/s)** | 2.40 | 1.378 | 0.808 | 21.042 | 9.994 | 9.061 | -2.083 | 0.007% |
-| **Speex (2.15 kb/s)** | 2.15 | 1.489 | 0.825 | 40.055 | 9.004 | 8.727 | -1.193 | 0.015% |
+| **Reference (16 kHz)** | 256.00 | 4.644 | 1.000 | 0.000 | 0.000 | 0.000 | 45.000 | 1.774% |
+| **Hybrid Mode-Switching (`WW + W_w`)** | **7.78** | **1.240** | **0.845** | **18.124** | **7.612** | **7.747** | **0.368** | **0.230%** |
+| **AMR-WB (23.05 kb/s)** | 23.05 | 3.777 | 0.990 | 5.780 | 1.742 | 3.522 | 5.589 | 1.113% |
+| **WaveNet Parametric (`W_w`, 2.4 kb/s)** | **2.40** | **1.304** | **0.846** | **18.094** | **7.982** | **8.011** | **-1.975** | **0.063%** |
+| **WaveNet Parametric (`W_wo`, 2.4 kb/s)** | 2.40 | 1.364 | 0.824 | 19.838 | 8.491 | 8.259 | -1.946 | 0.038% |
+| **MELP (2.4 kb/s)** | 2.40 | 1.429 | 0.798 | 21.414 | 9.692 | 9.171 | -2.685 | 0.011% |
+| **Codec 2 (2.4 kb/s)** | 2.40 | 1.366 | 0.809 | 20.160 | 10.103 | 9.270 | -2.031 | 0.007% |
+| **Speex (2.15 kb/s)** | 2.15 | 1.491 | 0.820 | 31.791 | 9.161 | 8.986 | -1.183 | 0.017% |
 
 ### 3. Speaker Verification & 3-AFC Triangle Discriminability (Section 3.4)
 
 | Benchmark / Dataset | `cos(Orig, W_w)` | `cos(Orig, W_wo)` | Advantage `Δcos` | 2-AFC ABX Preference (`W_w > W_wo`) | 3-AFC Triangle Odd-One-Out (`W_wo` vs `33.33%` chance) |
 | :--- | :---: | :---: | :---: | :---: | :---: |
 | **Paper Reported (WSJ0, Sec. 3.4)** | — | — | — | — | **41.0%** |
-| **Reproduced — LibriSpeech (`test-clean`)** | **0.6787** | 0.6469 | **+0.0318** | **75.00%** | **75.00%** |
-| **Reproduced — VCTK Corpus** | **0.5678** | 0.5584 | **+0.0094** | **75.00%** | **75.00%** |
+| **Reproduced — LibriSpeech (`test-clean`)** | **0.6405** | 0.5963 | **+0.0443** | **75.00%** | **75.00%** |
+| **Reproduced — VCTK Corpus** | **0.5318** | 0.5106 | **+0.0211** | **75.00%** | **75.00%** |
 
 ## Usage Examples
 
