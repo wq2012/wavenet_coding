@@ -52,7 +52,7 @@ Unconditioned closed-loop autoregressive WaveNet speech coder (`WW`, Section 2.3
 
 | Dataset / Split | Mean Conditional Entropy H̄ (bits/sample) | Theoretical Lower-Bound Bitrate (kb/s) | Cross-Entropy Rate R (bits/sample) | Cross-Entropy Bitrate (kb/s) | Active Arithmetic Coded Rate (bits/sample) | Active Arithmetic Bitrate (kb/s) | Arithmetic Coder Lossless Match Rate |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| **Paper Reported (WSJ0, Sec. 3.2, 60-layer conditioned WW)** | 2.6113 (1.81 nats) | 41.78 | 2.6546 (1.84 nats) | 42.47 (~42 kb/s) | — | — | — |
+| **Paper Reported (WSJ0, Sec. 3.2, 60-layer conditioned WW)** | 2.61 | ~42.0 | 2.62 (2.65 Eq. 3 gen. rate) | ~42.0 | — | — | — |
 | **Reproduced — LibriSpeech (`test-clean`, 16 utt)** | **6.0642** | **97.03** | **5.5285** (3.8320 nats) | **88.46** | **5.5230** | **88.37** | **100.0% (16/16)** |
 | **Reproduced — VCTK Corpus (16 utt)** | **6.0231** | **96.37** | **5.3500** (3.7083 nats) | **85.60** | **5.3485** | **85.58** | **100.0% (16/16)** |
 

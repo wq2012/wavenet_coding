@@ -57,11 +57,11 @@ In Section 3.2 of the paper, the average conditional entropy `H̄` (Eq. 4, theor
 
 | Dataset / Split | Mean Conditional Entropy H̄ (bits/sample) | Mean Entropy Bitrate (kb/s) | Cross-Entropy Rate R (`WW`, bits/sample) | Cross-Entropy Rate (`W_wo` / `W_w`, bits/sample) | Active Arithmetic Coded Rate (bits/sample) | Active Arithmetic Bitrate (kb/s) | Arithmetic Coder Lossless Match Rate |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| **Paper Reported (WSJ0, Sec. 3.2, 60-layer conditioned WW)** | 2.6113 (1.81 nats) | 41.78 | 2.6546 (1.84 nats) | — | — | — | — |
+| **Paper Reported (WSJ0, Sec. 3.2, 60-layer conditioned WW)** | 2.61 | ~42.0 | 2.62 (2.65 Eq. 3 gen. rate, ~42 kb/s) | — | — | — | — |
 | **Reproduced — LibriSpeech (`test-clean`, 20-layer WaveNet)** | **6.0642** | **97.03** | **5.5285** (3.8320 nats, 88.46 kb/s) | **5.4827** / **5.4560** | **5.5230** | **88.37** | **100.0% (16/16)** |
 | **Reproduced — VCTK Corpus (20-layer WaveNet)** | **6.0231** | **96.37** | **5.3500** (3.7083 nats, 85.60 kb/s) | **5.2844** / **5.2220** | **5.3485** | **85.58** | **100.0% (16/16)** |
 
-> **Architectural Scaling Note**: The original ICASSP 2018 paper trained a 60-layer conditioned WaveNet (`3` blocks × `10` layers + conditioning stack) on `32,580` WSJ0 utterances to reach `2.65 bits/sample` (`42 kb/s`). Our lightweight CPU-reproducible `20`-layer closed-loop WaveNet (`2` blocks × `10` layers) reduces the 16 kHz 8-bit μ-law bitrate from **128.00 kb/s** to **85.58–88.37 kb/s** (`31.0%–33.1%` lossless compression savings) with **100% bit-exact reconstruction** across all 16 held-out utterances per corpus, and conditioning on the 2.4 kb/s Codec 2 parameters reduces cross-entropy further (`5.4560 < 5.4827 < 5.5285` on LibriSpeech; `5.2220 < 5.2844 < 5.3500` on VCTK).
+> **Architectural Scaling Note**: The original ICASSP 2018 paper trained a 60-layer conditioned WaveNet (`3` blocks × `10` layers + conditioning stack) on `32,580` WSJ0 utterances (`123` speakers) to reach `2.61–2.65 bits/sample` (`~42 kb/s`). Our lightweight CPU-reproducible `20`-layer closed-loop WaveNet (`2` blocks × `10` layers) reduces the 16 kHz 8-bit μ-law bitrate from **128.00 kb/s** to **85.58–88.37 kb/s** (`31.0%–33.1%` lossless compression savings) with **100% bit-exact reconstruction** across all 16 held-out utterances per corpus, and conditioning on the 2.4 kb/s Codec 2 parameters reduces cross-entropy further (`5.4560 < 5.4827 < 5.5285` on LibriSpeech; `5.2220 < 5.2844 < 5.3500` on VCTK).
 
 #### Paper Figure 2 vs. Reproduced Instantaneous Entropy Profile
 
@@ -80,19 +80,18 @@ Key empirical observations on our strictly reference-free, pure time-domain 50-b
 1. **Short-Time Objective Intelligibility (`STOI`) & Spectral Distortion (`MCD` / `LSD`)**: At **2.4 kb/s**, both Parametric WaveNet models (`W_w` and `W_wo`) achieve higher intelligibility (`STOI = 0.817 / 0.814` on LibriSpeech; `0.847 / 0.838` on VCTK) and lower spectral envelope distortion (`MCD = 6.677 / 7.256 dB`, `LSD = 7.064 / 7.484 dB` on LibriSpeech; `MCD = 7.550 / 8.409 dB`, `LSD = 7.655 / 8.204 dB` on VCTK) than the narrow-band reference vocoders (`Codec 2`: `MCD = 8.383 / 9.994 dB`; `MELP`: `MCD = 8.091 / 9.629 dB`; `Speex`: `MCD = 8.055 / 9.004 dB`), with speaker-overlapping `W_w` consistently outperforming speaker-disjoint `W_wo`.
 2. **Pitch Tracking (`F0 RMSE`)**: Conditioning the 16 kHz Parametric WaveNet decoder on the quantized 7-bit F0 contour yields lower voiced pitch error (`15.958 / 15.412 Hz` on LibriSpeech; `21.731 / 20.821 Hz` on VCTK) than narrow-band `MELP` (`17.825 / 21.724 Hz`) and `Speex` (`40.598 / 40.055 Hz`).
 3. **Implicit 4–8 kHz Bandwidth Extension**: Whereas 8 kHz narrow-band codecs (`MELP`, `Codec 2`, `Speex`) contain negligible energy above 4 kHz (`0.007%–0.024%`), the 16 kHz Parametric WaveNet decoder reconstructs upper-band 4–8 kHz energy (`0.090%` for `W_w` and `0.052%` for `W_wo` on LibriSpeech; `0.054%` and `0.027%` on VCTK) purely in the time domain from the 50-bit/20ms bitstream via the WaveNet μ-law predictive distribution.
-4. **ITU-T P.862.2 Wideband PESQ (`MOS-LQO`)**: Because ITU-T P.862.2 `PESQ-WB` penalizes phase-asynchronous generative vocoders without high-band waveform locking, all 2.15–2.4 kb/s parametric vocoders score in the `1.30–1.71` `PESQ-WB` range (compared to `2.3–2.7` under perceptual time-warped POLQA in Table 1 of Kleijn et al.), while `AMR-WB (23.05 kb/s)` achieves `4.006 / 3.809` and lossless `WaveNet Waveform (WW)` achieves `4.141 / 3.721`.
+4. **ITU-T P.862.2 Wideband PESQ (`MOS-LQO`)**: Because ITU-T P.862.2 `PESQ-WB` penalizes phase-asynchronous generative vocoders without high-band waveform locking (as noted in Section 3.3 of Kleijn et al., where objective POLQA scored `WP` at `2.9` vs `4.6–4.7` for `AMR-WB`/`WW` because parametric WaveNet alters the signal waveform and phone timing), all 2.15–2.4 kb/s parametric vocoders score in the `1.30–1.71` `PESQ-WB` range while `AMR-WB (23.05 kb/s)` achieves `4.006 / 3.809` and lossless `WaveNet Waveform (WW)` achieves `4.141 / 3.721`.
 
 #### Paper Table 1 (WSJ0 POLQA MOS-LQO, Sec. 3.3)
 
 | Codec (Paper Table 1, WSJ0) | Bitrate (kb/s) | Reported POLQA MOS-LQO (1–5) |
 | :--- | :---: | :---: |
-| **Original Speech (16 kHz)** | 256.00 | 4.7 ± 0.1 |
-| **WaveNet Waveform (`WW`)** | 42.00 | 4.5 ± 0.1 |
-| **AMR-WB** | 23.05 | 4.5 ± 0.1 |
-| **WaveNet Parametric (`WP`)** | 2.40 | 2.7 ± 0.3 |
-| **MELP** | 2.40 | 2.7 ± 0.3 |
-| **Speex** | 2.15 | 2.4 ± 0.2 |
-| **Codec 2** | 2.40 | 2.3 ± 0.3 |
+| **WaveNet Waveform (`WW`)** | 42.0 | 4.7 |
+| **AMR-WB** | 23.0 (23.05) | 4.6 |
+| **WaveNet Parametric (`WP`)** | 2.4 | 2.9 |
+| **MELP** | 2.4 | 2.9 |
+| **Codec 2** | 2.4 | 2.7 |
+| **Speex** | 2.4 | 2.2 |
 
 #### LibriSpeech (`test-clean`) Evaluation (`pretrained_models/evaluation_librispeech.json`)
 
