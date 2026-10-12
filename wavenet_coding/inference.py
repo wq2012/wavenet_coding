@@ -322,26 +322,6 @@ class WaveNetParametricCodec:
         -1.0, 1.0, self.config.quantization_channels, dtype=np.float32
     )
     u_mean = (probs @ u_bin_centers).astype(np.float32)
-    if float(np.std(u_mean)) < 0.05:
-      log_p = np.log(np.maximum(probs, 1e-12)) / max(temperature, 0.1)
-      log_p -= np.max(log_p, axis=-1, keepdims=True)
-      scaled_p = np.exp(log_p)
-      scaled_p /= np.sum(scaled_p, axis=-1, keepdims=True)
-      cum_p = np.cumsum(scaled_p, axis=-1)
-      u = rng.uniform(0.0, 1.0, size=(num_samples, 1))
-      sampled_idx = np.argmax(cum_p >= u, axis=-1).astype(np.int32)
-      wavenet_sample = codec2.mulaw_dequantize(
-          sampled_idx, self.config.quantization_channels - 1
-      )
-      wideband = (0.75 * wavenet_sample + 0.25 * wavenet_mean).astype(
-          np.float32
-      )
-      return {
-          "reconstructed_waveform": wideband,
-          "probabilities": probs,
-          "wavenet_mean": wavenet_mean,
-      }
-
     u_var = np.maximum(
         np.sum(
             probs
@@ -352,7 +332,7 @@ class WaveNetParametricCodec:
     )
     u_std = np.sqrt(u_var).astype(np.float32)
     u_sample = u_mean + (
-        0.004
+        0.0005
         * max(temperature, 0.0)
         * u_std
         * rng.standard_normal(num_samples).astype(np.float32)

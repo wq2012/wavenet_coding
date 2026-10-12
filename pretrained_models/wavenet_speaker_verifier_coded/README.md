@@ -44,18 +44,18 @@ datasets:
 
 ## Training Progression (`training_metrics.json`)
 
-- **Training Corpus**: `40` speakers (`160` training utterances + held-out utterances coded at 2.4 kb/s, `347.84 s` audio) from LibriSpeech `test-clean` + CSTR VCTK; evaluated on held-out speakers
-- **Wall-Clock Training Time**: `199.09 s` (`10` epochs)
-- **Initial GE2E Loss / Held-Out EER**: `2.9329` (`25.000%` eval EER, `17.400%` epoch-1 train EER)
-- **Final GE2E Loss / Held-Out EER**: **`0.4869`** (**`12.500%` eval EER**, `11.230%` train EER)
+- **Training Corpus**: `40` speakers (`80` utterances coded at 2.4 kb/s, `158.06 s` audio) from LibriSpeech `test-clean` + CSTR VCTK; evaluated on held-out speakers
+- **Wall-Clock Training Time**: `339.11 s` (`40` epochs)
+- **Initial GE2E Loss / Held-Out EER**: `2.3694` (`25.000%` eval EER, `29.793%` epoch-1 train EER)
+- **Final GE2E Loss / Held-Out EER**: **`0.5530`** (**`12.946%` eval EER**, `9.127%` train EER)
 
 ## Evaluation Results — Speaker Verification on 2.4 kb/s Coded Speech (Section 3.4)
 
 | Benchmark / Dataset | 8-bit μ-law EER (`V_mulaw`) | 2.4 kb/s Parametric WaveNet `W_wo` EER (`V_coded`) | Genuine vs. Impostor Cosine (`V_coded` on `W_wo`) |
 | :--- | :---: | :---: | :---: |
 | **Paper Reported (WSJ0, Sec. 3.4)** | 8.4% | 15.8% | — |
-| **Reproduced — LibriSpeech (`test-clean`, 8 spk, 16 utt)** | **12.50%** [1.34%, 22.32%] | **12.95%** [4.01%, 31.25%] | `0.4360` vs `-0.0251` |
-| **Reproduced — VCTK Corpus (8 spk, 16 utt)** | **22.32%** [4.01%, 34.84%] | **22.32%** [9.35%, 30.83%] | `0.4628` vs `-0.0055` |
+| **Reproduced — LibriSpeech (`test-clean`, 8 spk, 16 utt)** | **2.68%** [0.89%, 10.73%] | **12.50%** [3.55%, 32.17%] | `0.5337` vs `-0.0612` |
+| **Reproduced — VCTK Corpus (8 spk, 16 utt)** | **12.95%** [4.46%, 37.51%] | **15.62%** [7.56%, 37.51%] | `0.5506` vs `-0.0091` |
 
 ## Usage Examples
 

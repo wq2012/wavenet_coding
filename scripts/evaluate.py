@@ -72,7 +72,7 @@ def parse_args() -> argparse.Namespace:
   parser.add_argument(
       "--max_seconds",
       type=float,
-      default=1.4,
+      default=2.2,
       help="Maximum duration in seconds per utterance.",
   )
   return parser.parse_args()

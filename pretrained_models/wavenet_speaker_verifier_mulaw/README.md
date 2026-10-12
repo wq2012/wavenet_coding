@@ -43,18 +43,18 @@ datasets:
 
 ## Training Progression (`training_metrics.json`)
 
-- **Training Corpus**: `40` speakers (`160` training utterances + held-out utterances, `347.84 s` audio) from LibriSpeech `test-clean` + CSTR VCTK; evaluated on held-out speakers
-- **Wall-Clock Training Time**: `204.20 s` (`10` epochs)
-- **Initial GE2E Loss / Held-Out EER**: `2.7446` (`37.500%` eval EER, `15.461%` epoch-1 train EER)
-- **Final GE2E Loss / Held-Out EER**: **`0.1778`** (**`2.679%` eval EER**, `5.296%` train EER)
+- **Training Corpus**: `56` speakers (`160` training utterances + held-out utterances, `347.84 s` audio) from LibriSpeech `test-clean` + CSTR VCTK; evaluated on held-out speakers
+- **Wall-Clock Training Time**: `150.61 s` (`15` epochs)
+- **Initial GE2E Loss / Held-Out EER**: `3.2148` (`26.786%` eval EER, `18.692%` epoch-1 train EER)
+- **Final GE2E Loss / Held-Out EER**: **`0.3910`** (**`2.679%` eval EER**, `5.875%` train EER)
 
 ## Evaluation Results — Speaker Verification & Triangle Test (Section 3.4)
 
 | Benchmark / Dataset | 8-bit μ-law EER (%) [95% CI] | AMR-WB (23.05 kb/s) EER (%) [95% CI] | Parametric WaveNet `W_w` EER (%) [95% CI] | Parametric WaveNet `W_wo` EER (%) [95% CI] | 3-AFC Triangle Odd-One-Out (`W_wo` vs `33.33%` chance) |
 | :--- | :---: | :---: | :---: | :---: | :---: |
 | **Paper Reported (WSJ0, Sec. 3.4)** | 8.4% | — | — | 15.8% | **41.0%** |
-| **Reproduced — LibriSpeech (`test-clean`, 8 spk, 16 utt)** | **12.50%** [1.34%, 22.32%] | **12.50%** [4.02%, 20.99%] | **13.84%** [4.90%, 37.50%] | **13.39%** [5.35%, 37.51%] | **75.00%** (ABX `75.00%`) |
-| **Reproduced — VCTK Corpus (8 spk, 16 utt)** | **22.32%** [4.01%, 34.84%] | **13.39%** [2.68%, 23.66%] | **26.79%** [12.50%, 42.86%] | **25.00%** [12.50%, 36.17%] | **75.00%** (ABX `75.00%`) |
+| **Reproduced — LibriSpeech (`test-clean`, 8 spk, 16 utt)** | **2.68%** [0.89%, 10.73%] | **12.50%** [2.68%, 21.88%] | **12.50%** [3.12%, 37.50%] | **13.39%** [4.46%, 33.50%] | **93.75%** (ABX `93.75%`) |
+| **Reproduced — VCTK Corpus (8 spk, 16 utt)** | **12.95%** [4.46%, 37.51%] | **14.29%** [1.79%, 29.48%] | **14.29%** [5.80%, 26.40%] | **24.11%** [12.94%, 33.49%] | **87.50%** (ABX `87.50%`) |
 
 ## Usage Examples
 

@@ -2,75 +2,105 @@
   "task": "wavenet",
   "mode": "parametric",
   "speaker_overlapping": false,
-  "num_train_utterances": 160,
-  "training_audio_duration_sec": 325.12,
+  "num_train_utterances": 48,
+  "training_audio_duration_sec": 105.82,
   "num_train_windows": 64,
   "num_eval_windows": 16,
-  "training_time_sec": 43.38,
-  "initial_eval_bits_per_sample": 7.0186,
-  "initial_eval_nll_nats_per_sample": 4.8649,
-  "final_eval_bits_per_sample": 4.6137,
-  "final_eval_nll_nats_per_sample": 3.198,
+  "training_time_sec": 61.86,
+  "initial_eval_bits_per_sample": 7.8636,
+  "initial_eval_nll_nats_per_sample": 5.4506,
+  "final_eval_bits_per_sample": 4.9562,
+  "final_eval_nll_nats_per_sample": 3.4354,
   "history": [
     {
       "epoch": 1,
-      "train_loss_bits_per_sample": 7.6132,
-      "eval_cross_entropy_bits_per_sample": 7.6307,
-      "eval_nll_nats_per_sample": 5.2892
+      "train_loss_bits_per_sample": 6.189,
+      "eval_cross_entropy_bits_per_sample": 5.9337,
+      "eval_nll_nats_per_sample": 4.1129
     },
     {
       "epoch": 2,
-      "train_loss_bits_per_sample": 6.8453,
-      "eval_cross_entropy_bits_per_sample": 6.7338,
-      "eval_nll_nats_per_sample": 4.6675
+      "train_loss_bits_per_sample": 5.9774,
+      "eval_cross_entropy_bits_per_sample": 5.6576,
+      "eval_nll_nats_per_sample": 3.9215
     },
     {
       "epoch": 3,
-      "train_loss_bits_per_sample": 6.3316,
-      "eval_cross_entropy_bits_per_sample": 6.1021,
-      "eval_nll_nats_per_sample": 4.2296
+      "train_loss_bits_per_sample": 5.8624,
+      "eval_cross_entropy_bits_per_sample": 5.4981,
+      "eval_nll_nats_per_sample": 3.811
     },
     {
       "epoch": 4,
-      "train_loss_bits_per_sample": 5.9938,
-      "eval_cross_entropy_bits_per_sample": 5.6591,
-      "eval_nll_nats_per_sample": 3.9226
+      "train_loss_bits_per_sample": 5.7874,
+      "eval_cross_entropy_bits_per_sample": 5.3886,
+      "eval_nll_nats_per_sample": 3.7351
     },
     {
       "epoch": 5,
-      "train_loss_bits_per_sample": 5.7737,
-      "eval_cross_entropy_bits_per_sample": 5.3437,
-      "eval_nll_nats_per_sample": 3.704
+      "train_loss_bits_per_sample": 5.7338,
+      "eval_cross_entropy_bits_per_sample": 5.3065,
+      "eval_nll_nats_per_sample": 3.6782
     },
     {
       "epoch": 6,
-      "train_loss_bits_per_sample": 5.6319,
-      "eval_cross_entropy_bits_per_sample": 5.1131,
-      "eval_nll_nats_per_sample": 3.5441
+      "train_loss_bits_per_sample": 5.6933,
+      "eval_cross_entropy_bits_per_sample": 5.2418,
+      "eval_nll_nats_per_sample": 3.6333
     },
     {
       "epoch": 7,
-      "train_loss_bits_per_sample": 5.5429,
-      "eval_cross_entropy_bits_per_sample": 4.9394,
-      "eval_nll_nats_per_sample": 3.4237
+      "train_loss_bits_per_sample": 5.6616,
+      "eval_cross_entropy_bits_per_sample": 5.1888,
+      "eval_nll_nats_per_sample": 3.5966
     },
     {
       "epoch": 8,
-      "train_loss_bits_per_sample": 5.4906,
-      "eval_cross_entropy_bits_per_sample": 4.8051,
-      "eval_nll_nats_per_sample": 3.3306
+      "train_loss_bits_per_sample": 5.636,
+      "eval_cross_entropy_bits_per_sample": 5.1444,
+      "eval_nll_nats_per_sample": 3.5658
     },
     {
       "epoch": 9,
-      "train_loss_bits_per_sample": 5.4648,
-      "eval_cross_entropy_bits_per_sample": 4.699,
-      "eval_nll_nats_per_sample": 3.2571
+      "train_loss_bits_per_sample": 5.615,
+      "eval_cross_entropy_bits_per_sample": 5.1065,
+      "eval_nll_nats_per_sample": 3.5395
     },
     {
       "epoch": 10,
-      "train_loss_bits_per_sample": 5.4587,
-      "eval_cross_entropy_bits_per_sample": 4.6137,
-      "eval_nll_nats_per_sample": 3.198
+      "train_loss_bits_per_sample": 5.5974,
+      "eval_cross_entropy_bits_per_sample": 5.0735,
+      "eval_nll_nats_per_sample": 3.5167
+    },
+    {
+      "epoch": 11,
+      "train_loss_bits_per_sample": 5.5825,
+      "eval_cross_entropy_bits_per_sample": 5.0445,
+      "eval_nll_nats_per_sample": 3.4966
+    },
+    {
+      "epoch": 12,
+      "train_loss_bits_per_sample": 5.5697,
+      "eval_cross_entropy_bits_per_sample": 5.0188,
+      "eval_nll_nats_per_sample": 3.4788
+    },
+    {
+      "epoch": 13,
+      "train_loss_bits_per_sample": 5.5587,
+      "eval_cross_entropy_bits_per_sample": 4.9958,
+      "eval_nll_nats_per_sample": 3.4628
+    },
+    {
+      "epoch": 14,
+      "train_loss_bits_per_sample": 5.5491,
+      "eval_cross_entropy_bits_per_sample": 4.9751,
+      "eval_nll_nats_per_sample": 3.4485
+    },
+    {
+      "epoch": 15,
+      "train_loss_bits_per_sample": 5.5406,
+      "eval_cross_entropy_bits_per_sample": 4.9562,
+      "eval_nll_nats_per_sample": 3.4354
     }
   ],
   "exported_files": {

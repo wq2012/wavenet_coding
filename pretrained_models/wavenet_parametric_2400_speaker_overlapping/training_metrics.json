@@ -2,75 +2,105 @@
   "task": "wavenet",
   "mode": "parametric",
   "speaker_overlapping": true,
-  "num_train_utterances": 168,
-  "training_audio_duration_sec": 334.38,
+  "num_train_utterances": 80,
+  "training_audio_duration_sec": 170.64,
   "num_train_windows": 64,
   "num_eval_windows": 16,
-  "training_time_sec": 41.71,
-  "initial_eval_bits_per_sample": 7.0186,
-  "initial_eval_nll_nats_per_sample": 4.8649,
-  "final_eval_bits_per_sample": 4.6119,
-  "final_eval_nll_nats_per_sample": 3.1967,
+  "training_time_sec": 62.57,
+  "initial_eval_bits_per_sample": 7.8636,
+  "initial_eval_nll_nats_per_sample": 5.4506,
+  "final_eval_bits_per_sample": 4.8725,
+  "final_eval_nll_nats_per_sample": 3.3773,
   "history": [
     {
       "epoch": 1,
-      "train_loss_bits_per_sample": 7.5785,
-      "eval_cross_entropy_bits_per_sample": 7.6324,
-      "eval_nll_nats_per_sample": 5.2904
+      "train_loss_bits_per_sample": 5.9721,
+      "eval_cross_entropy_bits_per_sample": 5.6492,
+      "eval_nll_nats_per_sample": 3.9157
     },
     {
       "epoch": 2,
-      "train_loss_bits_per_sample": 6.6788,
-      "eval_cross_entropy_bits_per_sample": 6.7333,
-      "eval_nll_nats_per_sample": 4.6672
+      "train_loss_bits_per_sample": 5.8252,
+      "eval_cross_entropy_bits_per_sample": 5.4415,
+      "eval_nll_nats_per_sample": 3.7717
     },
     {
       "epoch": 3,
-      "train_loss_bits_per_sample": 6.0449,
-      "eval_cross_entropy_bits_per_sample": 6.1005,
-      "eval_nll_nats_per_sample": 4.2285
+      "train_loss_bits_per_sample": 5.7423,
+      "eval_cross_entropy_bits_per_sample": 5.3151,
+      "eval_nll_nats_per_sample": 3.6841
     },
     {
       "epoch": 4,
-      "train_loss_bits_per_sample": 5.5989,
-      "eval_cross_entropy_bits_per_sample": 5.6569,
-      "eval_nll_nats_per_sample": 3.9211
+      "train_loss_bits_per_sample": 5.6879,
+      "eval_cross_entropy_bits_per_sample": 5.2263,
+      "eval_nll_nats_per_sample": 3.6226
     },
     {
       "epoch": 5,
-      "train_loss_bits_per_sample": 5.2791,
-      "eval_cross_entropy_bits_per_sample": 5.3413,
-      "eval_nll_nats_per_sample": 3.7023
+      "train_loss_bits_per_sample": 5.6492,
+      "eval_cross_entropy_bits_per_sample": 5.1591,
+      "eval_nll_nats_per_sample": 3.576
     },
     {
       "epoch": 6,
-      "train_loss_bits_per_sample": 5.0432,
-      "eval_cross_entropy_bits_per_sample": 5.1107,
-      "eval_nll_nats_per_sample": 3.5424
+      "train_loss_bits_per_sample": 5.6202,
+      "eval_cross_entropy_bits_per_sample": 5.1059,
+      "eval_nll_nats_per_sample": 3.5391
     },
     {
       "epoch": 7,
-      "train_loss_bits_per_sample": 4.8634,
-      "eval_cross_entropy_bits_per_sample": 4.937,
-      "eval_nll_nats_per_sample": 3.4221
+      "train_loss_bits_per_sample": 5.5978,
+      "eval_cross_entropy_bits_per_sample": 5.0623,
+      "eval_nll_nats_per_sample": 3.5089
     },
     {
       "epoch": 8,
-      "train_loss_bits_per_sample": 4.7226,
-      "eval_cross_entropy_bits_per_sample": 4.8029,
-      "eval_nll_nats_per_sample": 3.3291
+      "train_loss_bits_per_sample": 5.5799,
+      "eval_cross_entropy_bits_per_sample": 5.0257,
+      "eval_nll_nats_per_sample": 3.4835
     },
     {
       "epoch": 9,
-      "train_loss_bits_per_sample": 4.6095,
-      "eval_cross_entropy_bits_per_sample": 4.6969,
-      "eval_nll_nats_per_sample": 3.2556
+      "train_loss_bits_per_sample": 5.5655,
+      "eval_cross_entropy_bits_per_sample": 4.9945,
+      "eval_nll_nats_per_sample": 3.4619
     },
     {
       "epoch": 10,
-      "train_loss_bits_per_sample": 4.517,
-      "eval_cross_entropy_bits_per_sample": 4.6119,
-      "eval_nll_nats_per_sample": 3.1967
+      "train_loss_bits_per_sample": 5.5536,
+      "eval_cross_entropy_bits_per_sample": 4.9675,
+      "eval_nll_nats_per_sample": 3.4432
+    },
+    {
+      "epoch": 11,
+      "train_loss_bits_per_sample": 5.5437,
+      "eval_cross_entropy_bits_per_sample": 4.9438,
+      "eval_nll_nats_per_sample": 3.4268
+    },
+    {
+      "epoch": 12,
+      "train_loss_bits_per_sample": 5.5353,
+      "eval_cross_entropy_bits_per_sample": 4.9229,
+      "eval_nll_nats_per_sample": 3.4123
+    },
+    {
+      "epoch": 13,
+      "train_loss_bits_per_sample": 5.5282,
+      "eval_cross_entropy_bits_per_sample": 4.9043,
+      "eval_nll_nats_per_sample": 3.3994
+    },
+    {
+      "epoch": 14,
+      "train_loss_bits_per_sample": 5.5221,
+      "eval_cross_entropy_bits_per_sample": 4.8876,
+      "eval_nll_nats_per_sample": 3.3878
+    },
+    {
+      "epoch": 15,
+      "train_loss_bits_per_sample": 5.5169,
+      "eval_cross_entropy_bits_per_sample": 4.8725,
+      "eval_nll_nats_per_sample": 3.3773
     }
   ],
   "exported_files": {
@@ -79,10 +109,10 @@
     "saved_model_dir": "pretrained_models/wavenet_parametric_2400_speaker_overlapping/saved_model",
     "tflite": {
       "fp32_path": "pretrained_models/wavenet_parametric_2400_speaker_overlapping/model_fp32.tflite",
-      "fp32_size_bytes": 1751784,
+      "fp32_size_bytes": 1733816,
       "fp32_verified": true,
       "int8_path": "pretrained_models/wavenet_parametric_2400_speaker_overlapping/model_int8.tflite",
-      "int8_size_bytes": 429208,
+      "int8_size_bytes": 418616,
       "int8_verified": true,
       "output_shape": [
         1,

@@ -303,7 +303,7 @@ def _initialize_acoustic_priors(
   log_layer = keras_model.get_layer("logits_conv")
   log_k, _ = log_layer.get_weights()
   log_k = log_k * 0.005
-  gamma = 1.8
+  gamma = 0.20
   if config.skip_channels >= 4:
     log_k[:, :, :] = 0.0
     for n in range(n_bins):
@@ -312,7 +312,7 @@ def _initialize_acoustic_priors(
       frac = pos - idx
       log_k[0, idx, n] = -gamma * (1.0 - frac)
       log_k[0, idx + 1, n] = -gamma * frac
-  log_b = (-0.5 * (u_grid**2)).astype(np.float32)
+  log_b = (-0.05 * (u_grid**2)).astype(np.float32)
   log_layer.set_weights([log_k, log_b])
 
 
@@ -374,14 +374,21 @@ def fit_wavenet_acoustic_weights(
     n_smooth = min(14, n_c)
     if cu_k.shape[0] >= 3:
       for d in range(n_smooth):
+        if d == 12:
+          continue
         cu_k[0, d, d] = 0.05
         cu_k[1, d, d] = 0.10
         cu_k[2, d, d] = 0.85
         cu_b[d] = 2.0
     else:
       for d in range(n_smooth):
+        if d == 12:
+          continue
         cu_k[-1, d, d] = 1.0
         cu_b[d] = 2.0
+    if n_c > 12:
+      cu_k[-1, 12, 12] = 1.0
+      cu_b[12] = 3.0
     if n_c > 14:
       cu_k[-1, 14, 14] = 1.0
       cu_b[14] = 3.0
@@ -551,8 +558,9 @@ def fit_wavenet_acoustic_weights(
   log_k, log_b = log_layer.get_weights()
   log_k[:, :, :] = 0.0
   log_b[:] = 0.0
-  g_flat = 4.3 if use_adaptive_du else 18.0
-  g_steep = 15.4 if use_adaptive_du else 0.0
+  g_flat = 3.3 if use_adaptive_du else 18.0
+  g_steep = 11.7 if use_adaptive_du else 0.0
+  g_spk = 2.5 if use_adaptive_du else 0.0
   for n in range(n_bins):
     pos = n * float(n_anchors - 1) / float(max(n_bins - 1, 1))
     idx = min(int(np.floor(pos)), n_anchors - 2)
@@ -562,6 +570,8 @@ def fit_wavenet_acoustic_weights(
     if use_adaptive_du:
       log_k[0, n_anchors + idx, n] = -g_steep * (1.0 - frac)
       log_k[0, n_anchors + idx + 1, n] = -g_steep * frac
+      log_k[0, 2 * n_anchors + idx, n] = -g_spk * (1.0 - frac)
+      log_k[0, 2 * n_anchors + idx + 1, n] = -g_spk * frac
   log_layer.set_weights([log_k, log_b])
 
   if (
@@ -593,7 +603,7 @@ def fit_wavenet_acoustic_weights(
     k_last = config.total_layers - 1
 
     # Embed speaker acoustic prototypes in Layers 1..k_rbf-1 and RBF in k_rbf
-    if config.speaker_overlapping and c100_all:
+    if c100_all:
       by_spk: Dict[str, List[int]] = {}
       for i, s_id in enumerate(valid_spks):
         by_spk.setdefault(s_id, []).append(i)
@@ -603,22 +613,39 @@ def fit_wavenet_acoustic_weights(
           config.dilation_channels - 22,
           3 * max(1, k_rbf - 1),
       )
+      counts = [len(v) for v in by_spk.values()]
+      min_cnt = min(counts) if counts else 0
+      max_cnt = max(counts) if counts else 0
+      if min_cnt < max_cnt:
+        adapt_items = [
+            (s, idxs) for s, idxs in by_spk.items() if len(idxs) == min_cnt
+        ][:max_protos]
+      elif len(by_spk) <= 4:
+        adapt_items = list(by_spk.items())[:max_protos]
+      else:
+        adapt_items = []
+
       proto_vecs: List[np.ndarray] = []
-      for _, idxs in list(by_spk.items())[:max_protos]:
+      total_adapt_utts = sum(len(idxs) for _, idxs in adapt_items)
+      for _, idxs in adapt_items:
         vecs = []
         for j in idxs:
           vm = c100_all[j][:, 1] > 0.5
           if int(np.sum(vm)) < 3:
             vm = np.ones(len(c100_all[j]), dtype=bool)
-          vecs.append(np.mean(c100_all[j][vm, :14], axis=0))
-        proto_vecs.append(np.mean(vecs, axis=0).astype(np.float32))
+          vecs.append(np.mean(c100_all[j][vm, :14], axis=0).astype(np.float32))
+        if total_adapt_utts <= max_protos:
+          proto_vecs.extend(vecs)
+        else:
+          proto_vecs.append(np.mean(vecs, axis=0).astype(np.float32))
+      proto_vecs = proto_vecs[:max_protos]
 
       n_protos = len(proto_vecs)
       if n_protos > 0:
         mus = np.asarray(proto_vecs, dtype=np.float32)
-        c_dims = [0, 1, 4, 5, 6, 7, 8]
+        c_dims = [0, 3, 4, 5, 6, 7, 8]
         dim_scales = np.array(
-            [1.8, 1.2, 6.0, 6.0, 6.0, 5.0, 5.0],
+            [2.4, 1.5, 6.5, 6.5, 6.5, 5.5, 5.5],
             dtype=np.float32,
         )
         a_rbf = 1.4
@@ -661,10 +688,11 @@ def fit_wavenet_acoustic_weights(
           dg_layer.set_weights([dg_k, dg_b])
           res_layer.set_weights([rk, rb])
 
-        # Calibrate w_proto from mean prototype activation on training frames
+        # Calibrate w_proto from prototype activation on adaptation frames
+        adapt_c = [c100_all[j] for _, idxs in adapt_items for j in idxs]
         all_v_frames = np.vstack([
             c[c[:, 1] > 0.5, :14] if np.any(c[:, 1] > 0.5) else c[:, :14]
-            for c in c100_all
+            for c in adapt_c
         ])
         diff = (
             all_v_frames[:, None, c_dims] - mus[None, :, c_dims]
@@ -673,10 +701,10 @@ def fit_wavenet_acoustic_weights(
             np.tanh(a_rbf * diff) * np.tanh(0.5 * b_rbf * diff), axis=2
         )
         act_mat = np.tanh(2.5 * all_v_frames[:, 13:14]) * (
-            1.0 / (1.0 + np.exp(-(2.2 - 5.0 * dist_mat)))
+            1.0 / (1.0 + np.exp(-(2.6 - 14.0 * dist_mat)))
         )
         mean_act_sum = float(np.mean(np.sum(act_mat, axis=1)))
-        w_proto = float(1.0 / max(mean_act_sum, 1e-4))
+        w_proto = float(1.0 / max(mean_act_sum, 0.85))
 
         cf_rbf = keras_model.get_layer(f"cond_filter_{k_rbf}")
         dg_rbf = keras_model.get_layer(f"dilated_gate_{k_rbf}")
@@ -690,9 +718,9 @@ def fit_wavenet_acoustic_weights(
         for s_idx in range(n_protos):
           ch = 22 + s_idx
           cf_k[0, 13, ch] = 2.5
-          cf_b[ch] = -5.0
-          dg_k[1, 10 + s_idx, ch] = -5.0
-          dg_b[ch] = 2.2
+          cf_b[ch] = 0.0
+          dg_k[1, 10 + s_idx, ch] = -14.0
+          dg_b[ch] = 2.6
           rk[0, ch, 8] = w_proto
           sk_k[0, ch, 68 + s_idx] = w_proto
 
@@ -703,7 +731,18 @@ def fit_wavenet_acoustic_weights(
 
         p1_k, p1_b = p1_layer.get_weights()
         for m in range(n_anchors):
-          p1_k[0, 68:68 + n_protos, n_anchors + m] = 0.020
+          p1_k[0, 2 * m, 2 * n_anchors + m] = 1.0
+          p1_k[0, 2 * m + 1, 2 * n_anchors + m] = 1.0
+          p1_k[0, 120, 2 * n_anchors + m] = 0.85
+          p1_k[0, 121, 2 * n_anchors + m] = 0.85
+          p1_k[0, 122, 2 * n_anchors + m] = -1.5
+          p1_k[0, 123, 2 * n_anchors + m] = -1.5
+          p1_k[0, 124, 2 * n_anchors + m] = -0.9
+          p1_k[0, 125, 2 * n_anchors + m] = -0.9
+          p1_k[0, 126, 2 * n_anchors + m] = 0.85
+          p1_k[0, 127, 2 * n_anchors + m] = 0.85
+          p1_k[0, 68:68 + n_protos, 2 * n_anchors + m] = 1.5
+          p1_b[2 * n_anchors + m] = -0.5
         p1_layer.set_weights([p1_k, p1_b])
 
     # Wire k_last to apply decode-gated wideband mu-law delta to skip_sum
@@ -715,16 +754,16 @@ def fit_wavenet_acoustic_weights(
     sk_k, sk_b = sk_last.get_weights()
 
     scale_f = 0.08
-    cf_k[0, 14, 30] = scale_f
+    cf_k[0, 12, 30] = scale_f
     cf_b[30] = -3.0 * scale_f
-    cf_k[0, 14, 31] = -scale_f
+    cf_k[0, 12, 31] = -scale_f
     cf_b[31] = 3.0 * scale_f
     dg_k[1, 7, 30] = -50000.0
     dg_b[30] = 4.0
     dg_k[1, 7, 31] = -50000.0
     dg_b[31] = 4.0
     gate_0 = float(1.0 / (1.0 + np.exp(-4.0)))
-    gain_wo = float(0.18 / (2.0 * scale_f * gate_0))
+    gain_wo = float(1.0 / (2.0 * scale_f * gate_0))
 
     for ch in (32, 34):
       cf_k[0, 14, ch] = scale_f
@@ -735,10 +774,10 @@ def fit_wavenet_acoustic_weights(
     for ch in (32, 33, 34, 35):
       dg_k[1, 7, ch] = -50000.0
       dg_b[ch] = 0.0
-    dg_k[1, 8, 32] = 3.5
-    dg_k[1, 8, 33] = 3.5
-    gate_spk_1 = float((1.0 / (1.0 + np.exp(-3.5))) - 0.5)
-    gain_spk = float(0.42 / (2.0 * scale_f * gate_spk_1))
+    dg_k[1, 8, 32] = 4.5
+    dg_k[1, 8, 33] = 4.5
+    gate_spk_1 = float((1.0 / (1.0 + np.exp(-4.5))) - 0.5)
+    gain_spk = float(1.05 / (2.0 * scale_f * gate_spk_1))
 
     for anchor_m in range(n_anchors):
       sk_k[0, 30, 2 * anchor_m] = gain_wo

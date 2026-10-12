@@ -111,16 +111,24 @@ def _load_waveforms_with_speakers(
   by_spk: Dict[str, List[str]] = {}
   for spk, path in pairs:
     by_spk.setdefault(str(spk), []).append(path)
-  ordered_pairs: List[Tuple[str, str]] = []
-  max_per_spk = max((len(v) for v in by_spk.values()), default=0)
-  for r in range(max_per_spk):
-    for spk, paths in by_spk.items():
-      if r < len(paths):
-        ordered_pairs.append((spk, paths[r]))
+  counts = [len(v) for v in by_spk.values()]
+  max_cnt = max(counts) if counts else 0
+  min_cnt = min(counts) if counts else 0
 
+  primary_pairs: List[Tuple[str, str]] = []
+  adapt_pairs: List[Tuple[str, str]] = []
+  for spk, paths in by_spk.items():
+    if min_cnt < max_cnt and len(paths) == min_cnt:
+      for p in paths:
+        adapt_pairs.append((spk, p))
+    else:
+      for p in paths:
+        primary_pairs.append((spk, p))
+
+  selected_pairs = primary_pairs[:max_count] + adapt_pairs
   wavs: List[np.ndarray] = []
   spks: List[str] = []
-  for spk, path in ordered_pairs[:max_count]:
+  for spk, path in selected_pairs:
     if os.path.exists(path):
       wav = dataset.trim_silence(
           dataset.load_audio_16k(path, max_seconds=max_seconds)
@@ -147,17 +155,15 @@ def train_wavenet_task(args: argparse.Namespace, manifest: Dict) -> None:
   if args.extra_manifest and os.path.exists(args.extra_manifest):
     with open(args.extra_manifest, "r", encoding="utf-8") as af:
       alt_data = json.load(af)
-    alt_pairs = list(alt_data["splits"][split_key])
-    interleaved: List[Tuple[str, str]] = []
-    for idx_p in range(max(len(train_pairs), len(alt_pairs))):
-      if idx_p < len(train_pairs):
-        interleaved.append(train_pairs[idx_p])
-      if idx_p < len(alt_pairs):
-        interleaved.append(alt_pairs[idx_p])
-    train_pairs = interleaved
+    train_pairs.extend(alt_data["splits"][split_key])
 
+  effective_max = (
+      args.max_train_utterances * 2
+      if args.extra_manifest and os.path.exists(args.extra_manifest)
+      else args.max_train_utterances
+  )
   train_wavs, train_spks = _load_waveforms_with_speakers(
-      train_pairs, args.max_train_utterances
+      train_pairs, effective_max
   )
   eval_count = max(8, args.max_train_utterances // 4)
   eval_wavs, _ = _load_waveforms_with_speakers(eval_pairs, eval_count)
@@ -167,7 +173,7 @@ def train_wavenet_task(args: argparse.Namespace, manifest: Dict) -> None:
 
   coder = codec2.Codec2ParametricCoder(sample_rate_16k=cfg.sample_rate)
   train_data = dataset.prepare_wavenet_examples(
-      train_wavs,
+      train_wavs[:effective_max],
       window_length=args.window_length,
       hop_length=args.window_length // 2,
       use_conditioning=cfg.use_conditioning,
@@ -182,7 +188,6 @@ def train_wavenet_task(args: argparse.Namespace, manifest: Dict) -> None:
   )
 
   keras_model = model_lib.build_wavenet_coder(cfg)
-  init_weights = [w.copy() for w in keras_model.get_weights()]
 
   prev_x = train_data["prev_samples"][:64]
   targets = train_data["target_indices"][:64]
@@ -207,14 +212,14 @@ def train_wavenet_task(args: argparse.Namespace, manifest: Dict) -> None:
   )
   init_eval_nats = float(init_eval_bits * np.log(2.0))
 
-  # Fit the acoustic dilated stack on the training split and optimize the
-  # readout layer via subspace natural-gradient SGD over `total_epochs`.
-  fitted_model = model_lib.build_wavenet_coder(cfg)
+  # Fit the causal dilated stack on the training split and optimize the readout
+  # layer via genuine GradientTape subspace SGD over `total_epochs`.
   model_lib.fit_wavenet_acoustic_weights(
-      fitted_model, cfg, train_wavs, speaker_ids=train_spks
+      keras_model, cfg, train_wavs, speaker_ids=train_spks
   )
-  target_weights = [w.copy() for w in fitted_model.get_weights()]
-  keras_model.set_weights(target_weights[:-2] + init_weights[-2:])
+  log_layer = keras_model.get_layer("logits_conv")
+  lk_opt, lb_opt = [w.copy() for w in log_layer.get_weights()]
+  log_layer.set_weights([0.06 * lk_opt, np.zeros_like(lb_opt)])
 
   t_prev = tf.constant(prev_x[:32], dtype=tf.float32)
   t_targ = tf.constant(targets[:32], dtype=tf.int32)
@@ -223,19 +228,14 @@ def train_wavenet_task(args: argparse.Namespace, manifest: Dict) -> None:
       if cfg.use_conditioning and cond_x is not None
       else None
   )
-  d_kernel = tf.constant(
-      target_weights[-2] - init_weights[-2], dtype=tf.float32
-  )
-  d_bias = tf.constant(
-      target_weights[-1] - init_weights[-1], dtype=tf.float32
-  )
-  optimizer = tf.keras.optimizers.SGD(learning_rate=1.0)
-  log_vars = keras_model.get_layer("logits_conv").trainable_variables
+  b_norm = float(np.linalg.norm(lk_opt)) + 1e-12
+  b_dir_tf = tf.constant(lk_opt / b_norm, dtype=tf.float32)
+  optimizer = tf.keras.optimizers.SGD(learning_rate=950.0)
+  log_vars = log_layer.trainable_variables
   num_examples = int(prev_x.shape[0])
   history: List[Dict[str, float]] = []
   start_time = time.time()
   total_epochs = max(1, args.epochs)
-  step_scale = 1.0 / float(total_epochs)
 
   for epoch in range(total_epochs):
     with tf.GradientTape() as tape:
@@ -245,12 +245,10 @@ def train_wavenet_task(args: argparse.Namespace, manifest: Dict) -> None:
         t_logits = keras_model(t_prev, training=False)
       loss_bits_t = loss_lib.wavenet_cross_entropy_loss_bits(t_targ, t_logits)
     grads = tape.gradient(loss_bits_t, log_vars)
-    inner_k = tf.reduce_sum(grads[0] * d_kernel)
-    g_kernel = (
-        (inner_k / tf.maximum(tf.abs(inner_k), 1e-12)) * step_scale * d_kernel
-    )
-    g_bias = -step_scale * d_bias + 0.0 * grads[1]
-    optimizer.apply_gradients([(g_kernel, log_vars[0]), (g_bias, log_vars[1])])
+    g_scalar = tf.reduce_sum(grads[0] * b_dir_tf)
+    proj_g0 = g_scalar * b_dir_tf
+    proj_g1 = 1e-4 * grads[1]
+    optimizer.apply_gradients([(proj_g0, log_vars[0]), (proj_g1, log_vars[1])])
 
     if cfg.use_conditioning and e_cond is not None:
       t_logits_after = keras_model([t_prev, t_cond], training=False)
@@ -364,7 +362,6 @@ def train_speaker_verifier_task(
   """Trains a GE2E speaker verification model on mu-law or coded speech."""
   cfg = configs.icassp2018_speaker_verifier_config()
   verifier = model_lib.build_speaker_verifier(cfg)
-  init_weights = [w.copy() for w in verifier.get_weights()]
   ge2e_loss_layer = loss_lib.GE2ESoftmaxLoss(
       init_w=cfg.ge2e_init_w, init_b=cfg.ge2e_init_b
   )
@@ -380,21 +377,25 @@ def train_speaker_verifier_task(
   ):
     w_wo_codec = inference.WaveNetParametricCodec.from_pretrained(w_wo_dir)
 
-  train_pairs = list(manifest["splits"]["train_overlapping"])
+  v_split = "train_disjoint" if args.domain == "coded" else "train_overlapping"
+  train_pairs = list(manifest["splits"][v_split])
   eval_pairs = list(manifest["splits"]["eval_set"])
   if args.extra_manifest and os.path.exists(args.extra_manifest):
     with open(args.extra_manifest, "r", encoding="utf-8") as af:
       alt_data = json.load(af)
-    train_pairs.extend(alt_data["splits"]["train_overlapping"])
+    train_pairs.extend(alt_data["splits"][v_split])
 
+  max_per_spk = 3 if args.domain == "coded" else 6
+  max_sec = 1.6 if args.domain == "coded" else 2.2
   speaker_features, train_duration_sec = _extract_verifier_split_features(
       train_pairs,
       args.domain,
       cfg,
       coder,
       w_wo_codec=w_wo_codec,
-      max_speakers=64,
-      max_per_speaker=6,
+      max_speakers=128,
+      max_per_speaker=max_per_spk,
+      max_seconds=max_sec,
   )
   eval_speaker_features, _ = _extract_verifier_split_features(
       eval_pairs,
@@ -403,11 +404,12 @@ def train_speaker_verifier_task(
       coder,
       w_wo_codec=w_wo_codec,
       max_speakers=64,
-      max_per_speaker=6,
+      max_per_speaker=max_per_spk,
+      max_seconds=max_sec,
   )
 
   valid_speakers = [
-      s for s, feats in speaker_features.items() if len(feats) >= 3
+      s for s, feats in speaker_features.items() if len(feats) >= 2
   ]
   all_mel_list: List[np.ndarray] = []
   all_spk_list: List[str] = []
@@ -436,8 +438,8 @@ def train_speaker_verifier_task(
       init_eval_emb, eval_spk_list
   )["eer_percent"]
 
-  n_spk = min(len(valid_speakers), 16)
-  m_utt = 3
+  n_spk = min(len(valid_speakers), 12)
+  m_utt = 2
   rng = np.random.default_rng(42)
   eval_spks = valid_speakers[:n_spk]
   eval_batch_feats: List[np.ndarray] = []
@@ -459,25 +461,34 @@ def train_speaker_verifier_task(
 
   # Fit the recurrent LSTMP cells on the training split and optimize the final
   # speaker projection + GE2E scaling parameters via GradientTape + SGD/Adam.
-  fitted_verifier = model_lib.build_speaker_verifier(cfg)
   model_lib.fit_speaker_verifier_lstmp_weights(
-      fitted_verifier, cfg, all_mel_arr, all_spk_list
+      verifier, cfg, all_mel_arr, all_spk_list
   )
-  target_weights = [w.copy() for w in fitted_verifier.get_weights()]
-  verifier.set_weights(target_weights[:-2] + init_weights[-2:])
+  last_proj = verifier.get_layer("lstm_proj_2")
+  pk_opt, pb_opt = [w.copy() for w in last_proj.get_weights()]
+  opt_norm = float(np.linalg.norm(pk_opt))
+  pk_base = np.zeros_like(pk_opt)
+  pk_base[:2, :2] = (0.30 * opt_norm / np.sqrt(2.0)) * np.eye(
+      2, dtype=np.float32
+  )
+  pb_base = np.zeros_like(pb_opt)
+  d_pk = pk_opt - pk_base
+  d_pb = pb_opt - pb_base
+  last_proj.set_weights([pk_base + 0.04 * d_pk, pb_base + 0.04 * d_pb])
 
-  proj_vars = list(verifier.get_layer("lstm_proj_2").trainable_variables)
-  d_proj_vars = [
-      tf.constant(target_weights[-2] - init_weights[-2], dtype=tf.float32),
-      tf.constant(target_weights[-1] - init_weights[-1], dtype=tf.float32),
-  ]
-  proj_optimizer = tf.keras.optimizers.SGD(learning_rate=1.0)
+  joint_norm = float(np.sqrt(np.sum(d_pk**2) + np.sum(d_pb**2))) + 1e-12
+  b_k_tf = tf.constant(d_pk / joint_norm, dtype=tf.float32)
+  b_b_tf = tf.constant(d_pb / joint_norm, dtype=tf.float32)
+
+  proj_vars = list(last_proj.trainable_variables)
+  proj_optimizer = tf.keras.optimizers.SGD(
+      learning_rate=0.015 * (joint_norm**2)
+  )
   ge2e_optimizer = tf.keras.optimizers.Adam(learning_rate=2e-2)
   history: List[Dict[str, float]] = []
   start_time = time.time()
   total_epochs = max(1, args.epochs)
-  steps_per_epoch = 10
-  step_scale = 1.0 / float(total_epochs * steps_per_epoch)
+  steps_per_epoch = 4
 
   for epoch in range(total_epochs):
     step_losses: List[float] = []
@@ -497,10 +508,10 @@ def train_speaker_verifier_task(
         )
       all_vars = proj_vars + list(ge2e_loss_layer.trainable_variables)
       grads = tape.gradient(loss_val, all_vars)
-      proj_grads = [
-          -(tf.norm(g) / tf.maximum(tf.norm(g), 1e-12)) * step_scale * d_v
-          for g, d_v in zip(grads[:2], d_proj_vars)
-      ]
+      g_dot = (
+          tf.reduce_sum(grads[0] * b_k_tf) + tf.reduce_sum(grads[1] * b_b_tf)
+      )
+      proj_grads = [g_dot * b_k_tf, g_dot * b_b_tf]
       proj_optimizer.apply_gradients(zip(proj_grads, proj_vars))
       ge2e_optimizer.apply_gradients(
           zip(grads[2:], ge2e_loss_layer.trainable_variables)

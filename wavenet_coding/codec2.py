@@ -584,6 +584,18 @@ class Codec2ParametricCoder:
           )
       )
 
+    if num_frames_10ms > 0:
+      v_mask = cond_100hz[:, 1] > 0.5
+      if int(np.sum(v_mask)) < 3:
+        v_mask = np.ones(num_frames_10ms, dtype=bool)
+      v_mean = np.mean(cond_100hz[v_mask, :14], axis=0)
+      f0_std = float(np.std(cond_100hz[v_mask, 0]))
+      c_smooth = 0.05 * cond_100hz[:, :14] + 0.95 * v_mean[np.newaxis, :]
+      c_smooth[:, 1] = cond_100hz[:, 1]
+      c_smooth[:, 2] = cond_100hz[:, 2]
+      c_smooth[:, 3] = 0.05 * cond_100hz[:, 3] + 0.95 * (f0_std * 2.0)
+      cond_100hz[:, :14] = c_smooth.astype(np.float32)
+
     upsampled = np.repeat(cond_100hz, self.hop_16k, axis=0).astype(np.float32)
     if frames:
       c2_nb = self.synthesize_codec2_baseline(frames, seed=42)
@@ -598,13 +610,21 @@ class Codec2ParametricCoder:
           [0.3651, 0.1648, 0.2125, 0.1678, 0.1079, 0.0672], dtype=np.float32
       )
       u_ar_nb = (np.tanh(np.outer(h0_nb, gains)) @ w_tanh).astype(np.float32)
+      wo_sig = (0.65 * c2_nb + 0.35 * wb_sig).astype(np.float32)
+      u_wo = (
+          np.sign(wo_sig)
+          * (np.log1p(255.0 * np.abs(wo_sig)) / np.log1p(255.0))
+      ).astype(np.float32)
       u_wb = (
           np.sign(wb_sig)
           * (np.log1p(255.0 * np.abs(wb_sig)) / np.log1p(255.0))
       ).astype(np.float32)
-      delta_u_wb = np.clip(u_wb - u_ar_nb, -2.0, 2.0).astype(np.float32)
-      delta_u_wb[:2] = 0.0
-      upsampled[:, 14] = delta_u_wb
+      delta_u_wo = np.clip(u_wo - u_ar_nb, -2.0, 2.0).astype(np.float32)
+      delta_u_wo[:2] = 0.0
+      delta_u_spk = np.clip(u_wb - u_wo, -2.0, 2.0).astype(np.float32)
+      delta_u_spk[:2] = 0.0
+      upsampled[:, 12] = delta_u_wo
+      upsampled[:, 14] = delta_u_spk
       upsampled[:, 15] = x_nb_prev.astype(np.float32)
     return frames, upsampled
 
@@ -627,6 +647,8 @@ class Codec2ParametricCoder:
     prev_f0 = frames[0].f0_hz
     prev_rms = float(10.0 ** (frames[0].energy_db / 20.0))
     zi_noise = np.zeros(self.lsf_order, dtype=np.float64)
+    b_uv_hp, a_uv_hp = signal.butter(2, 1600.0 / 4000.0, btype="highpass")
+    zi_uv_hp = np.zeros(2, dtype=np.float64)
 
     for f_idx, frame in enumerate(frames):
       cur_lsf = (frame.lsf_hz / (0.5 * self.sample_rate_8k)) * np.pi
@@ -655,18 +677,21 @@ class Codec2ParametricCoder:
         k_idx = np.arange(len(a_poly), dtype=np.float64)
         denom = np.exp(-1j * np.outer(omega_h, k_idx)) @ a_poly
         h_resp = 1.0 / (denom + 1e-6)
-        amp_h = np.abs(h_resp) * np.where(h_idx == 1, 1.6, 1.0)
+        amp_h = np.abs(h_resp) * np.where(h_idx <= 2, 2.2, 1.0)
         phi_h = np.angle(h_resp)
         harm_mat = np.cos(np.outer(inst_phase, h_idx) + phi_h[np.newaxis, :])
         voiced_sig = harm_mat @ amp_h
 
       noise = rng.standard_normal(hop)
       unvoiced_sig, zi_noise = signal.lfilter([1.0], a_poly, noise, zi=zi_noise)
+      unvoiced_hp, zi_uv_hp = signal.lfilter(
+          b_uv_hp, a_uv_hp, unvoiced_sig, zi=zi_uv_hp
+      )
       if low_v > 0.5:
         v_rms = float(np.sqrt(np.mean(voiced_sig**2) + 1e-10))
-        u_rms = float(np.sqrt(np.mean(unvoiced_sig**2) + 1e-10))
-        uv_ratio = 0.12 if high_v > 0.5 else 0.25
-        synth_frame = voiced_sig + unvoiced_sig * (v_rms / u_rms) * uv_ratio
+        u_rms = float(np.sqrt(np.mean(unvoiced_hp**2) + 1e-10))
+        uv_ratio = 0.04 if high_v > 0.5 else 0.08
+        synth_frame = voiced_sig + unvoiced_hp * (v_rms / u_rms) * uv_ratio
       else:
         synth_frame = unvoiced_sig
 
@@ -695,7 +720,7 @@ class Codec2ParametricCoder:
     m_std = float(np.std(mid_band)) + 1e-8
     u_m = mid_band / m_std
     nl_exc = (np.tanh(2.5 * u_m + 0.65) - np.tanh(0.65)) * m_std
-    hb_exc = 1.45 * signal.lfilter(b_hp, a_hp, nl_exc)
+    hb_exc = 0.80 * signal.lfilter(b_hp, a_hp, nl_exc)
     return np.clip(full_16k + hb_exc, -0.98, 0.98).astype(np.float32)
 
   def frames_to_bitstream(self, frames: List[Codec2FrameParams]) -> bytes:

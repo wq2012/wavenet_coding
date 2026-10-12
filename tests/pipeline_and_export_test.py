@@ -154,6 +154,19 @@ class PipelineAndExportTest(unittest.TestCase):
       out = loaded_codec.encode_and_decode(wav)
       self.assertEqual(out["reconstructed_waveform"].shape, (320,))
       self.assertEqual(len(out["bitstream"]), 11)
+      self.assertLess(
+          out["conditional_rate_metrics"]["cross_entropy_bits_per_sample"],
+          untrained_out["conditional_rate_metrics"][
+              "cross_entropy_bits_per_sample"
+          ],
+      )
+      lsd_untrained = evaluation.compute_log_spectral_distance_db(
+          wav, untrained_out["reconstructed_waveform"], n_fft=256
+      )
+      lsd_trained = evaluation.compute_log_spectral_distance_db(
+          wav, out["reconstructed_waveform"], n_fft=256
+      )
+      self.assertLess(lsd_trained, lsd_untrained)
       from_bits = loaded_codec.decode_bitstream(out["bitstream"])
       self.assertEqual(from_bits["reconstructed_waveform"].shape, (320,))
       np.testing.assert_array_equal(
@@ -167,6 +180,40 @@ class PipelineAndExportTest(unittest.TestCase):
       )
       self.assertGreater(
           float(np.std(from_bits["reconstructed_waveform"])), 1e-4
+      )
+
+      # Verify data-driven speaker adaptation with identical config
+      cfg_same = configs.WaveNetCoderConfig(
+          mode="parametric",
+          num_blocks=1,
+          layers_per_block=4,
+          residual_channels=16,
+          dilation_channels=64,
+          skip_channels=128,
+          use_conditioning=True,
+          cond_dim=16,
+          cond_conv_channels=64,
+          speaker_overlapping=False,
+      )
+      m_same_spk = model.build_wavenet_coder(cfg_same)
+      m_diff_spk = model.build_wavenet_coder(cfg_same)
+      model.fit_wavenet_acoustic_weights(
+          m_same_spk, cfg_same, [wav], speaker_ids=["spk_00"]
+      )
+      model.fit_wavenet_acoustic_weights(
+          m_diff_spk, cfg_same, [wav2], speaker_ids=["spk_01"]
+      )
+      c_same = inference.WaveNetParametricCodec(
+          config=cfg_same, keras_model=m_same_spk
+      )
+      c_diff = inference.WaveNetParametricCodec(
+          config=cfg_same, keras_model=m_diff_spk
+      )
+      out_same = c_same.encode_and_decode(wav)
+      out_diff = c_diff.encode_and_decode(wav)
+      self.assertLess(
+          out_same["conditional_rate_metrics"]["cross_entropy_bits_per_sample"],
+          out_diff["conditional_rate_metrics"]["cross_entropy_bits_per_sample"],
       )
 
       # Test waveform codec lossless roundtrip, export & hybrid codec

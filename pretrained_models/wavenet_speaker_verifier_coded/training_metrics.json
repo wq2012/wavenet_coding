@@ -3,73 +3,253 @@
   "domain": "coded",
   "num_speakers": 40,
   "num_eval_utterances": 16,
-  "training_audio_duration_sec": 347.84,
-  "training_time_sec": 199.09,
-  "initial_ge2e_loss": 2.9329,
-  "final_ge2e_loss": 0.4869,
+  "training_audio_duration_sec": 158.06,
+  "training_time_sec": 339.11,
+  "initial_ge2e_loss": 2.3694,
+  "final_ge2e_loss": 0.553,
   "initial_eer_percent": 25.0,
-  "final_train_eer_percent": 11.23,
-  "final_eer_percent": 12.5,
+  "final_train_eer_percent": 9.127,
+  "final_eer_percent": 12.946,
   "history": [
     {
       "epoch": 1,
-      "ge2e_loss": 1.5517,
-      "train_eer_percent": 17.4,
-      "eer_percent": 27.679
+      "ge2e_loss": 3.8447,
+      "train_eer_percent": 29.793,
+      "eer_percent": 39.732
     },
     {
       "epoch": 2,
-      "ge2e_loss": 1.0617,
-      "train_eer_percent": 14.067,
-      "eer_percent": 12.5
+      "ge2e_loss": 1.7484,
+      "train_eer_percent": 13.49,
+      "eer_percent": 25.0
     },
     {
       "epoch": 3,
-      "ge2e_loss": 0.7063,
-      "train_eer_percent": 11.843,
-      "eer_percent": 12.5
+      "ge2e_loss": 0.7597,
+      "train_eer_percent": 12.347,
+      "eer_percent": 24.554
     },
     {
       "epoch": 4,
-      "ge2e_loss": 0.6285,
-      "train_eer_percent": 11.947,
-      "eer_percent": 12.5
+      "ge2e_loss": 0.8711,
+      "train_eer_percent": 10.321,
+      "eer_percent": 14.732
     },
     {
       "epoch": 5,
-      "ge2e_loss": 0.599,
-      "train_eer_percent": 11.378,
-      "eer_percent": 12.5
+      "ge2e_loss": 0.8281,
+      "train_eer_percent": 10.05,
+      "eer_percent": 13.393
     },
     {
       "epoch": 6,
-      "ge2e_loss": 0.5724,
-      "train_eer_percent": 11.222,
-      "eer_percent": 12.5
+      "ge2e_loss": 0.7618,
+      "train_eer_percent": 10.121,
+      "eer_percent": 12.946
     },
     {
       "epoch": 7,
-      "ge2e_loss": 0.6371,
-      "train_eer_percent": 11.214,
-      "eer_percent": 12.5
+      "ge2e_loss": 0.8566,
+      "train_eer_percent": 10.192,
+      "eer_percent": 12.946
     },
     {
       "epoch": 8,
-      "ge2e_loss": 0.5686,
-      "train_eer_percent": 11.21,
-      "eer_percent": 12.5
+      "ge2e_loss": 0.6173,
+      "train_eer_percent": 10.085,
+      "eer_percent": 12.946
     },
     {
       "epoch": 9,
-      "ge2e_loss": 0.579,
-      "train_eer_percent": 11.282,
-      "eer_percent": 12.5
+      "ge2e_loss": 0.7124,
+      "train_eer_percent": 9.993,
+      "eer_percent": 12.946
     },
     {
       "epoch": 10,
-      "ge2e_loss": 0.4869,
-      "train_eer_percent": 11.23,
-      "eer_percent": 12.5
+      "ge2e_loss": 0.651,
+      "train_eer_percent": 10.007,
+      "eer_percent": 12.946
+    },
+    {
+      "epoch": 11,
+      "ge2e_loss": 0.6107,
+      "train_eer_percent": 9.377,
+      "eer_percent": 12.946
+    },
+    {
+      "epoch": 12,
+      "ge2e_loss": 0.7558,
+      "train_eer_percent": 9.149,
+      "eer_percent": 12.946
+    },
+    {
+      "epoch": 13,
+      "ge2e_loss": 0.7096,
+      "train_eer_percent": 9.156,
+      "eer_percent": 12.946
+    },
+    {
+      "epoch": 14,
+      "ge2e_loss": 0.7386,
+      "train_eer_percent": 9.199,
+      "eer_percent": 12.946
+    },
+    {
+      "epoch": 15,
+      "ge2e_loss": 0.618,
+      "train_eer_percent": 9.22,
+      "eer_percent": 12.946
+    },
+    {
+      "epoch": 16,
+      "ge2e_loss": 0.6496,
+      "train_eer_percent": 9.127,
+      "eer_percent": 12.946
+    },
+    {
+      "epoch": 17,
+      "ge2e_loss": 0.7096,
+      "train_eer_percent": 9.199,
+      "eer_percent": 12.946
+    },
+    {
+      "epoch": 18,
+      "ge2e_loss": 0.6781,
+      "train_eer_percent": 9.149,
+      "eer_percent": 12.946
+    },
+    {
+      "epoch": 19,
+      "ge2e_loss": 0.5524,
+      "train_eer_percent": 9.149,
+      "eer_percent": 12.946
+    },
+    {
+      "epoch": 20,
+      "ge2e_loss": 0.6723,
+      "train_eer_percent": 9.163,
+      "eer_percent": 12.946
+    },
+    {
+      "epoch": 21,
+      "ge2e_loss": 0.7285,
+      "train_eer_percent": 9.163,
+      "eer_percent": 12.946
+    },
+    {
+      "epoch": 22,
+      "ge2e_loss": 0.7532,
+      "train_eer_percent": 9.17,
+      "eer_percent": 12.946
+    },
+    {
+      "epoch": 23,
+      "ge2e_loss": 0.5079,
+      "train_eer_percent": 9.17,
+      "eer_percent": 12.946
+    },
+    {
+      "epoch": 24,
+      "ge2e_loss": 0.528,
+      "train_eer_percent": 9.177,
+      "eer_percent": 12.946
+    },
+    {
+      "epoch": 25,
+      "ge2e_loss": 0.6178,
+      "train_eer_percent": 9.17,
+      "eer_percent": 12.946
+    },
+    {
+      "epoch": 26,
+      "ge2e_loss": 0.6768,
+      "train_eer_percent": 9.177,
+      "eer_percent": 12.946
+    },
+    {
+      "epoch": 27,
+      "ge2e_loss": 0.6397,
+      "train_eer_percent": 9.177,
+      "eer_percent": 12.946
+    },
+    {
+      "epoch": 28,
+      "ge2e_loss": 0.5907,
+      "train_eer_percent": 9.184,
+      "eer_percent": 12.946
+    },
+    {
+      "epoch": 29,
+      "ge2e_loss": 0.7232,
+      "train_eer_percent": 9.199,
+      "eer_percent": 12.946
+    },
+    {
+      "epoch": 30,
+      "ge2e_loss": 0.5213,
+      "train_eer_percent": 9.135,
+      "eer_percent": 12.946
+    },
+    {
+      "epoch": 31,
+      "ge2e_loss": 0.6614,
+      "train_eer_percent": 9.199,
+      "eer_percent": 12.946
+    },
+    {
+      "epoch": 32,
+      "ge2e_loss": 0.597,
+      "train_eer_percent": 9.192,
+      "eer_percent": 12.946
+    },
+    {
+      "epoch": 33,
+      "ge2e_loss": 0.6702,
+      "train_eer_percent": 9.192,
+      "eer_percent": 12.946
+    },
+    {
+      "epoch": 34,
+      "ge2e_loss": 0.6634,
+      "train_eer_percent": 9.199,
+      "eer_percent": 12.946
+    },
+    {
+      "epoch": 35,
+      "ge2e_loss": 0.7299,
+      "train_eer_percent": 9.199,
+      "eer_percent": 12.946
+    },
+    {
+      "epoch": 36,
+      "ge2e_loss": 0.7199,
+      "train_eer_percent": 9.199,
+      "eer_percent": 12.946
+    },
+    {
+      "epoch": 37,
+      "ge2e_loss": 0.7693,
+      "train_eer_percent": 9.199,
+      "eer_percent": 12.946
+    },
+    {
+      "epoch": 38,
+      "ge2e_loss": 0.5746,
+      "train_eer_percent": 9.199,
+      "eer_percent": 12.946
+    },
+    {
+      "epoch": 39,
+      "ge2e_loss": 0.5051,
+      "train_eer_percent": 9.206,
+      "eer_percent": 12.946
+    },
+    {
+      "epoch": 40,
+      "ge2e_loss": 0.553,
+      "train_eer_percent": 9.127,
+      "eer_percent": 12.946
     }
   ],
   "exported_files": {
